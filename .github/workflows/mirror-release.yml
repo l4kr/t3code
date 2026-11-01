@@ -1,0 +1,92 @@
+name: Mirror upstream release
+
+# Rebuilds each stable upstream T3 Code release for Windows x64 with smooth
+# scrolling disabled, and publishes it here. The installed app's updater points
+# at this repository, so it updates from these releases. See FORK.md.
+
+on:
+  schedule:
+    - cron: "41 * * * *"
+  push:
+    branches: [main]
+    paths: [fork/**, .github/workflows/mirror-release.yml]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Upstream tag to rebuild (default latest stable)
+        required: false
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: mirror-release
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      UPSTREAM: pingdotgg/t3code
+    steps:
+      - uses: actions/checkout@v4
+
+      # GitHub pauses schedules in repos without commits for 60 days; re-enabling resets that.
+      - name: Keep schedule alive
+        run: gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/mirror-release.yml/enable" || true
+
+      - name: Pick release
+        id: pick
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="${INPUT_TAG:-$(gh api "repos/$UPSTREAM/releases/latest" --jq .tag_name)}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "$tag is already mirrored."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.pick.outputs.skip != 'true'
+        with:
+          node-version: 22
+
+      - name: Download upstream installer
+        if: steps.pick.outputs.skip != 'true'
+        run: >
+          gh release download "${{ steps.pick.outputs.tag }}" --repo "$UPSTREAM"
+          --pattern "T3-Code-${{ steps.pick.outputs.version }}-x64.exe" --dir "$RUNNER_TEMP/upstream"
+
+      - name: Repack
+        if: steps.pick.outputs.skip != 'true'
+        run: >
+          node fork/repack-windows.mjs
+          --installer "$RUNNER_TEMP/upstream/T3-Code-${{ steps.pick.outputs.version }}-x64.exe"
+          --tag "${{ steps.pick.outputs.tag }}"
+          --repo "$GITHUB_REPOSITORY"
+          --out "$RUNNER_TEMP/out"
+          --work "$RUNNER_TEMP/work"
+          --7z "C:/Program Files/7-Zip/7z.exe"
+
+      # gh uploads assets to a draft and publishes it last, so the updater never
+      # sees a release without latest.yml.
+      - name: Publish
+        if: steps.pick.outputs.skip != 'true'
+        run: |
+          tag="${{ steps.pick.outputs.tag }}"
+          version="${{ steps.pick.outputs.version }}"
+          gh release view "$tag" --repo "$UPSTREAM" --json name,body --jq .name > "$RUNNER_TEMP/title.txt"
+          gh release view "$tag" --repo "$UPSTREAM" --json body --jq .body > "$RUNNER_TEMP/notes.md"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
+            --title "$(cat "$RUNNER_TEMP/title.txt")" --notes-file "$RUNNER_TEMP/notes.md" \
+            "$RUNNER_TEMP/out/T3-Code-$version-x64.exe" \
+            "$RUNNER_TEMP/out/T3-Code-$version-x64.exe.blockmap" \
+            "$RUNNER_TEMP/out/latest.yml"
