@@ -125,6 +125,8 @@ it.layer(NodeServices.layer)("CodexHomeLayout", (it) => {
           yield* fileSystem.makeDirectory(shadowHome, { recursive: true });
           yield* writeTextFile(path.join(shadowHome, "auth.json"), '{"shadow":true}\n');
           yield* writeTextFile(path.join(shadowHome, "auth.lock"), "");
+          yield* writeTextFile(path.join(sharedHome, "auth.json.lock"), "");
+          yield* writeTextFile(path.join(shadowHome, "auth.json.lock"), "");
           yield* fileSystem.symlink(
             path.join(sharedHome, "models_cache.json"),
             path.join(shadowHome, "models_cache.json"),
@@ -162,6 +164,9 @@ it.layer(NodeServices.layer)("CodexHomeLayout", (it) => {
           expect(authLinkResult._tag).toBe("Failure");
           expect(authContents).toContain("shadow");
           expect(authLockLinkResult._tag).toBe("Failure");
+          expect(
+            yield* fileSystem.readLink(path.join(shadowHome, "auth.json.lock")).pipe(Effect.result),
+          ).toMatchObject({ _tag: "Failure" });
         }),
     );
 

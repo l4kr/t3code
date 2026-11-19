@@ -6,6 +6,9 @@ import {
   pickableSkills,
   resolvePinnedSkills,
   setPinnedSkillBackground,
+  setSkillIcon,
+  skillIconFilePath,
+  skillLabel,
   togglePinnedSkill,
 } from "./pinnedSkills";
 
@@ -72,5 +75,37 @@ describe("pinned skills", () => {
     expect(setPinnedSkillBackground([{ name: "ship", background: true }], "ship", false)).toEqual([
       { name: "ship" },
     ]);
+  });
+
+  it("labels skills in sentence case, keeping a display name the skill sets itself", () => {
+    expect(
+      [
+        makeSkill({ name: "merge" }),
+        makeSkill({ name: "code-review" }),
+        makeSkill({ name: "babysit-pr" }),
+        makeSkill({ name: "leaving_pr_comments" }),
+        makeSkill({ name: "anthropic-skills:pdf" }),
+        makeSkill({ name: "ship", displayName: "Ship it" }),
+      ].map(skillLabel),
+    ).toEqual(["Merge", "Code review", "Babysit PR", "Leaving PR comments", "PDF", "Ship it"]);
+  });
+
+  it("looks for a skill's icon as icon.png beside its SKILL.md", () => {
+    expect(
+      skillIconFilePath(
+        makeSkill({ name: "merge", path: "C:\\Users\\me\\.claude\\skills\\merge\\SKILL.md" }),
+      ),
+    ).toBe("C:\\Users\\me\\.claude\\skills\\merge\\icon.png");
+    expect(
+      skillIconFilePath(makeSkill({ name: "ship", path: "/Users/me/skills/ship/SKILL.md" })),
+    ).toBe("/Users/me/skills/ship/icon.png");
+  });
+
+  it("keeps one chosen icon per skill regardless of case, and forgets it on reset", () => {
+    const icons = setSkillIcon({}, "Ship", "data:image/png;base64,AAA");
+    expect(setSkillIcon(icons, "ship", "data:image/png;base64,BBB")).toEqual({
+      ship: "data:image/png;base64,BBB",
+    });
+    expect(setSkillIcon(icons, "SHIP", null)).toEqual({});
   });
 });

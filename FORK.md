@@ -5,6 +5,10 @@ T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `
 - **Skills** in thread details: _Pick skills_ pins skills as one-click rows. Clicking one sends it.
   Right-click a pinned skill for _Start in background_ (it starts its own thread and opens the top
   unpinned thread) or _Unpin_. Pins live in the browser's local storage.
+  Pinned skills show names in sentence case and an `icon.png` from beside the skill's `SKILL.md`;
+  _Change icon_ in the right-click menu overrides it for that browser, and _Reset icon_ drops that.
+- **Codex accounts**: each shadow home keeps its own `auth.json.lock`, so newer Codex CLIs no longer
+  stop extra accounts from starting.
 - **Branch cleanup**: when storage cleanup removes a settled thread's worktree, it also deletes the
   thread's branch if every commit is on the default branch or its pull request merged.
 - Windows only: Chromium smooth scrolling turned off.

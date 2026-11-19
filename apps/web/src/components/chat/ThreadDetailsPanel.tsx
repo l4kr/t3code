@@ -237,7 +237,12 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
               ) : null}
 
               {density !== "essential" && props.providerSkills && props.onUseSkill ? (
-                <ThreadDetailsSkills skills={props.providerSkills} onUseSkill={props.onUseSkill} />
+                <ThreadDetailsSkills
+                  environmentId={props.environmentId}
+                  threadId={props.threadId}
+                  skills={props.providerSkills}
+                  onUseSkill={props.onUseSkill}
+                />
               ) : null}
 
               {show.branch || show.pullRequests || show.git ? (
