@@ -167,6 +167,7 @@ import { type LegendListRef } from "@legendapp/list/react";
 import { useWorkspaceMutationRefresh } from "../hooks/useWorkspaceMutationRefresh";
 import { DEFAULT_INTERACTION_MODE, type ChatMessage } from "../types";
 import { buildThreadRouteParams } from "../threadRoutes";
+import { runPinnedSkill } from "./chat/runPinnedSkill";
 import { useTheme } from "../hooks/useTheme";
 import { copyThreadReference } from "../lib/copyThreadReference";
 import { subscribeSnapShotComposerFocus } from "../lib/desktopSnapShot";
@@ -4002,18 +4003,22 @@ export default function ChatView(props: ChatViewProps) {
                     contextWindow: activeContextWindow,
                   }}
                   providerSkills={timelineSkills}
-                  onUseSkill={(skill, background) => {
-                    const inserted = composerRef.current?.insertTextAtEnd(`$${skill.name} `, {
-                      ensureLeadingBoundary: true,
-                    });
-                    if (inserted) {
-                      void onComposerSendStable(
-                        undefined,
-                        "auto",
-                        background ? "background" : "foreground",
-                      );
-                    }
-                  }}
+                  onUseSkill={(skill, background) =>
+                    void runPinnedSkill({
+                      skill,
+                      background,
+                      composer: composerRef.current,
+                      send: onComposerSendStable,
+                      from: { environmentId: activeThread.environmentId, id: activeThread.id },
+                      openThread: (thread) =>
+                        void navigate({
+                          to: "/$environmentId/$threadId",
+                          params: buildThreadRouteParams(
+                            scopeThreadRef(thread.environmentId, thread.id),
+                          ),
+                        }),
+                    })
+                  }
                 />
 
                 <PullRequestThreadDialogHost

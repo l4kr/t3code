@@ -171,6 +171,7 @@ import {
   resolveThreadRouteTarget,
 } from "../threadRoutes";
 import type { SidebarThreadSummary } from "../types";
+import { publishSidebarOrder } from "./chat/sidebarTopThread";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { cn } from "~/lib/utils";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
@@ -1361,6 +1362,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     keepEmptyFolders: (group) =>
       scopedProjectGroups.length > 0 || (group.pinned && !group.archived),
   });
+  publishSidebarOrder({ orderedThreadKeys, threadByKey, sectionByThreadKey });
 
   // Ranked across environments as the palette ranks them, so one
   // environment's list does not sit above another's better matches; rows
