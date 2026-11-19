@@ -5,18 +5,11 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import {
-  listAsarDir,
-  readAsar,
-  readAsarFile,
-  replaceAsarDir,
-  replaceAsarFile,
-  writeAsar,
-} from "./asar.mjs";
+import { readAsar, readAsarFile, replaceAsarFile, writeAsar } from "./asar.mjs";
+import { assertServerDist, swapServerDist } from "./server-dist.mjs";
 
 const UPSTREAM = "pingdotgg/t3code";
 const APP_ID = "com.t3tools.t3code";
-const CLIENT_DIR = "apps/server/dist/client";
 const PATCH_MARKER = "/* l4kr-fork: disable smooth scrolling */";
 const PATCH_LINE = `${PATCH_MARKER} require("electron").app.commandLine.appendSwitch("disable-smooth-scrolling");\n`;
 
@@ -25,7 +18,7 @@ const installer = NodePath.resolve(required("installer"));
 const tag = required("tag");
 const [owner, repo] = required("repo").split("/");
 const outDir = NodePath.resolve(required("out"));
-const clientSource = args.client ? NodePath.resolve(args.client) : null;
+const serverDistSource = args["server-dist"] ? NodePath.resolve(args["server-dist"]) : null;
 const workDir = NodePath.resolve(
   args.work ?? NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-repack-")),
 );
@@ -34,8 +27,8 @@ const sevenZip = args["7z"] ?? "7z";
 const appDir = NodePath.join(workDir, "app");
 const nsisDir = NodePath.join(workDir, "nsis");
 const projectDir = NodePath.join(workDir, "project");
-const clientDir = NodePath.join(workDir, "client");
-for (const dir of [appDir, nsisDir, projectDir, clientDir])
+const serverDistStage = NodePath.join(workDir, "server-dist");
+for (const dir of [appDir, nsisDir, projectDir, serverDistStage])
   NodeFS.rmSync(dir, { recursive: true, force: true });
 NodeFS.mkdirSync(outDir, { recursive: true });
 
@@ -65,21 +58,15 @@ const patched = readAsarFile(readAsar(asarPath), appPackage.main).toString("utf8
 if (!patched.startsWith(PATCH_LINE)) throw new Error("Entry patch did not stick");
 console.log(`Patched ${appPackage.main}`);
 
-if (clientSource) {
-  if (!NodeFS.existsSync(NodePath.join(clientSource, "index.html")))
-    throw new Error(`No index.html in ${clientSource}`);
+if (serverDistSource) {
   const server = readAsar(serverAsarPath);
-  NodeFS.cpSync(clientSource, clientDir, { recursive: true });
-  for (const file of listAsarDir(server, CLIENT_DIR)) {
-    if (file.includes("/") || file === "index.html") continue;
-    NodeFS.writeFileSync(
-      NodePath.join(clientDir, file),
-      readAsarFile(server, `${CLIENT_DIR}/${file}`),
-    );
-  }
-  replaceAsarDir(server, CLIENT_DIR, clientDir);
+  swapServerDist(server, serverDistSource, serverDistStage);
   writeAsar(serverAsarPath, server);
-  console.log(`Replaced ${CLIENT_DIR} with ${clientSource}`);
+  NodeFS.rmSync(NodePath.join(resourcesDir, "server-compile-cache"), {
+    recursive: true,
+    force: true,
+  });
+  console.log(`Replaced apps/server/dist with ${serverDistSource}`);
 }
 
 const appUpdateYml = [
@@ -219,14 +206,11 @@ if (!builtEntry.startsWith(PATCH_LINE)) throw new Error("Built installer is miss
 if (!builtFeed.includes(`owner: ${owner}`) || builtFeed.includes("publisherName")) {
   throw new Error(`Built installer has the wrong update feed:\n${builtFeed}`);
 }
-if (clientSource) {
-  const builtIndex = readAsarFile(
+if (serverDistSource) {
+  assertServerDist(
     readAsar(NodePath.join(verifyDir, "resources", "server.asar")),
-    `${CLIENT_DIR}/index.html`,
+    serverDistSource,
   );
-  if (!builtIndex.equals(NodeFS.readFileSync(NodePath.join(clientSource, "index.html")))) {
-    throw new Error("Built installer is missing the fork web client");
-  }
 }
 for (const name of [
   `T3-Code-${version}-x64.exe`,

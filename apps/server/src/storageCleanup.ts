@@ -59,6 +59,7 @@ import { isFilesystemRoot, managedWorktreesDirectories } from "./worktreesDirect
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import { isNonRepositoryGitStderr } from "./vcs/GitVcsDriverCore.ts";
 import { isLinkedWorktree, removeLinkedWorktree } from "./vcs/worktreeRemoval.ts";
+import { deleteIntegratedBranch } from "./storageCleanupBranch.ts";
 import { withWorkspaceLease } from "./workspace/workspaceLease.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
@@ -1598,6 +1599,19 @@ const make = Effect.gen(function* () {
               execute: git.execute,
               run: (args) => cleanupGit(repository, [...args], "git worktree remove"),
             });
+            if (thread.branch !== null)
+              yield* deleteIntegratedBranch(git, {
+                cwd: repository,
+                branch: thread.branch,
+                pullRequestMerged: removalReason === "pull request was merged",
+              }).pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("storage cleanup kept the branch", {
+                    threadId: thread.id,
+                    cause,
+                  }),
+                ),
+              );
             entries.push({ ...entry, outcome: "removed", reason: sentence(removalReason), bytes });
             yield* gitManager.invalidateStatus(project.workspaceRoot);
             // Preserve branch/path so ProviderTurnStartService can recreate the checkout on resume.

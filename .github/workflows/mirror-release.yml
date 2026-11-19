@@ -24,25 +24,21 @@ concurrency:
   group: mirror-release
   cancel-in-progress: false
 
+env:
+  UPSTREAM: pingdotgg/t3code
+
 jobs:
-  mirror:
-    runs-on: windows-latest
-    timeout-minutes: 60
-    defaults:
-      run:
-        shell: bash
+  pick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
-      UPSTREAM: pingdotgg/t3code
-      SEVEN_ZIP: C:/Program Files/7-Zip/7z.exe
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+      version: ${{ steps.pick.outputs.version }}
+      skip: ${{ steps.pick.outputs.skip }}
+      replace: ${{ steps.pick.outputs.replace }}
     steps:
-      - name: Keep line endings
-        run: git config --global core.autocrlf false
-
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Keep schedule alive
         run: gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/mirror-release.yml/enable" || true
 
@@ -64,16 +60,33 @@ jobs:
             fi
           fi
 
+  windows:
+    needs: pick
+    if: needs.pick.outputs.skip != 'true'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SEVEN_ZIP: C:/Program Files/7-Zip/7z.exe
+      TAG: ${{ needs.pick.outputs.tag }}
+      VERSION: ${{ needs.pick.outputs.version }}
+    steps:
+      - name: Keep line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download upstream installer
-        if: steps.pick.outputs.skip != 'true'
         run: >
-          gh release download "${{ steps.pick.outputs.tag }}" --repo "$UPSTREAM"
-          --pattern "T3-Code-${{ steps.pick.outputs.version }}-x64.exe" --dir "$RUNNER_TEMP/upstream"
+          gh release download "$TAG" --repo "$UPSTREAM"
+          --pattern "T3-Code-$VERSION-x64.exe" --dir "$RUNNER_TEMP/upstream"
 
       - name: Check out the release with fork changes
-        if: steps.pick.outputs.skip != 'true'
-        env:
-          TAG: ${{ steps.pick.outputs.tag }}
         run: |
           cp -r fork "$RUNNER_TEMP/fork-tools"
           git fetch --no-tags "https://github.com/$UPSTREAM.git" \
@@ -84,52 +97,75 @@ jobs:
           git checkout -q --detach "$TAG"
           if [ -s "$RUNNER_TEMP/fork.patch" ]; then git apply --3way "$RUNNER_TEMP/fork.patch"; fi
 
-      - name: Read upstream client config
-        if: steps.pick.outputs.skip != 'true'
+      - name: Read upstream build config
         run: >
           node "$RUNNER_TEMP/fork-tools/upstream-client-env.mjs"
-          --installer "$RUNNER_TEMP/upstream/T3-Code-${{ steps.pick.outputs.version }}-x64.exe"
+          --installer "$RUNNER_TEMP/upstream/T3-Code-$VERSION-x64.exe"
           --7z "$SEVEN_ZIP" --work "$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Setup dependencies
-        if: steps.pick.outputs.skip != 'true'
         uses: ./.github/actions/setup-ci-deps
         with:
-          install-args: --filter=@t3tools/web...
+          install-args: --filter=t3... --filter=@t3tools/web...
 
-      - name: Build web client
-        if: steps.pick.outputs.skip != 'true'
-        run: vp run --filter @t3tools/web build
+      - name: Build server and web client
+        run: vp run --filter t3 build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-dist
+          path: |
+            apps/server/dist
+            !apps/server/dist/**/*.map
+          if-no-files-found: error
+          retention-days: 1
 
       - uses: actions/setup-node@v4
-        if: steps.pick.outputs.skip != 'true'
         with:
           node-version: 22
 
       - name: Repack
-        if: steps.pick.outputs.skip != 'true'
         run: >
           node "$RUNNER_TEMP/fork-tools/repack-windows.mjs"
-          --installer "$RUNNER_TEMP/upstream/T3-Code-${{ steps.pick.outputs.version }}-x64.exe"
-          --tag "${{ steps.pick.outputs.tag }}"
+          --installer "$RUNNER_TEMP/upstream/T3-Code-$VERSION-x64.exe"
+          --tag "$TAG"
           --repo "$GITHUB_REPOSITORY"
-          --client apps/web/dist
+          --server-dist apps/server/dist
           --out "$RUNNER_TEMP/out"
           --work "$RUNNER_TEMP/work"
           --7z "$SEVEN_ZIP"
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            ${{ runner.temp }}/out/T3-Code-${{ env.VERSION }}-x64.exe
+            ${{ runner.temp }}/out/T3-Code-${{ env.VERSION }}-x64.exe.blockmap
+            ${{ runner.temp }}/out/latest.yml
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: [pick, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.pick.outputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
       - name: Publish
-        if: steps.pick.outputs.skip != 'true'
         run: |
-          tag="${{ steps.pick.outputs.tag }}"
-          version="${{ steps.pick.outputs.version }}"
-          if [ "${{ steps.pick.outputs.replace }}" = "true" ]; then
-            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          ls -la release
+          if [ "${{ needs.pick.outputs.replace }}" = "true" ]; then
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
           fi
-          gh release view "$tag" --repo "$UPSTREAM" --json name --jq .name > "$RUNNER_TEMP/title.txt"
-          gh release view "$tag" --repo "$UPSTREAM" --json body --jq .body > "$RUNNER_TEMP/notes.md"
-          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
-            --title "$(cat "$RUNNER_TEMP/title.txt")" --notes-file "$RUNNER_TEMP/notes.md" \
-            "$RUNNER_TEMP/out/T3-Code-$version-x64.exe" \
-            "$RUNNER_TEMP/out/T3-Code-$version-x64.exe.blockmap" \
-            "$RUNNER_TEMP/out/latest.yml"
+          gh release view "$TAG" --repo "$UPSTREAM" --json name --jq .name > title.txt
+          gh release view "$TAG" --repo "$UPSTREAM" --json body --jq .body > notes.md
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
+            --title "$(cat title.txt)" --notes-file notes.md release/*

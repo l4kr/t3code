@@ -3362,11 +3362,45 @@ describe("storage cleanup reports and local file policies", () => {
         const report = yield* service.runNow;
         expect(report.entries[0]).toMatchObject({ outcome, reason });
         expect(yield* fs.exists(worktree)).toBe(outcome === "kept");
-        expect(
-          (yield* command(repo, ["show-ref", "--verify", "refs/heads/feature"])).stdout,
-        ).not.toBe("");
+        expect((yield* command(repo, ["branch", "--list", "feature"])).stdout.trim() !== "").toBe(
+          outcome === "kept",
+        );
       }),
     ),
+  );
+  it.effect.each([
+    ["merged", false],
+    ["unmerged", true],
+  ] as const)(
+    "removes a settled worktree on its timer and deletes only a merged branch: %s",
+    ([state, branchKept]) =>
+      runCleanupTest(
+        Effect.gen(function* () {
+          yield* TestClock.setTime(NOW_MS);
+          const { service, fs, repo, worktree, command, setThreads } = yield* cleanupFixture({
+            ...DEFAULT_SERVER_SETTINGS.storageCleanup,
+            worktreeSettledAfterDays: 7,
+          });
+          if (state === "merged") {
+            yield* fs.writeFileString(`${worktree}/tracked.txt`, "landed work\n");
+            yield* command(worktree, ["commit", "-am", "landed work"]);
+            yield* command(repo, ["merge", "--ff-only", "feature"]);
+          } else {
+            yield* fs.writeFileString(`${worktree}/tracked.txt`, "unmerged work\n");
+            yield* command(worktree, ["commit", "-am", "unmerged work"]);
+          }
+          setThreads([
+            shell({ branch: "feature", worktreePath: worktree, settledAt: at(-8 * DAY_MS) }),
+          ]);
+
+          const report = yield* service.runNow;
+          expect(report.entries[0]).toMatchObject({ outcome: "removed" });
+          expect(yield* fs.exists(worktree)).toBe(false);
+          expect((yield* command(repo, ["branch", "--list", "feature"])).stdout.trim() !== "").toBe(
+            branchKept,
+          );
+        }),
+      ),
   );
   it.live("keeps an unsettled new thread's unchanged worktree after its first turn", () =>
     runCleanupTest(
