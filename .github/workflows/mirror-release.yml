@@ -106,7 +106,7 @@ jobs:
       - name: Setup dependencies
         uses: ./.github/actions/setup-ci-deps
         with:
-          install-args: --filter=t3... --filter=@t3tools/web...
+          install-args: --filter=t3... --filter=@t3tools/web... --filter=@t3tools/scripts...
 
       - name: Build server and web client
         run: vp run --filter t3 build
