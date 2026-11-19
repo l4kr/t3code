@@ -16,28 +16,10 @@ const args = Object.fromEntries(
     .slice(2)
     .flatMap((arg, i, all) => (arg.startsWith("--") ? [[arg.slice(2), all[i + 1]]] : [])),
 );
-if (!args.installer) throw new Error("Missing --installer");
-const sevenZip = args["7z"] ?? "7z";
+if (!args.installer && !args.asar) throw new Error("Missing --installer or --asar");
 const work = NodeFS.mkdtempSync(NodePath.join(args.work ?? NodeOS.tmpdir(), "t3-env-"));
 
-NodeChildProcess.execFileSync(
-  sevenZip,
-  ["x", "-y", `-o${work}`, NodePath.resolve(args.installer), "$PLUGINSDIR/app-64.7z"],
-  { stdio: "ignore" },
-);
-NodeChildProcess.execFileSync(
-  sevenZip,
-  [
-    "x",
-    "-y",
-    `-o${work}`,
-    NodePath.join(work, "$PLUGINSDIR", "app-64.7z"),
-    "resources/server.asar",
-  ],
-  { stdio: "ignore" },
-);
-
-const archive = readAsar(NodePath.join(work, "resources", "server.asar"));
+const archive = readAsar(args.asar ? NodePath.resolve(args.asar) : extractServerAsar());
 const env = extractClientEnv(
   listAsarDir(archive, CLIENT_DIR)
     .filter((file) => file.endsWith(".js"))
@@ -46,6 +28,18 @@ const env = extractClientEnv(
 NodeFS.rmSync(work, { recursive: true, force: true });
 
 for (const [key, value] of Object.entries(env)) process.stdout.write(`${key}=${value}\n`);
+
+function extractServerAsar() {
+  const sevenZip = args["7z"] ?? "7z";
+  const installerArchive = NodePath.join(work, "$PLUGINSDIR", "app-64.7z");
+  const extract = (from, entry) =>
+    NodeChildProcess.execFileSync(sevenZip, ["x", "-y", `-o${work}`, from, entry], {
+      stdio: "ignore",
+    });
+  extract(NodePath.resolve(args.installer), "$PLUGINSDIR/app-64.7z");
+  extract(installerArchive, "resources/server.asar");
+  return NodePath.join(work, "resources", "server.asar");
+}
 
 function extractClientEnv(sources) {
   const literal = /\{(?:[A-Z][A-Z0-9_]*:(?:`[^`\\]*`|"[^"\\]*"|!0|!1),?)+\}/g;

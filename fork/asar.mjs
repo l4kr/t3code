@@ -114,6 +114,7 @@ export function writeAsar(file, archive) {
   sizePickle.writeUInt32LE(4, 0);
   sizePickle.writeUInt32LE(headerPickle.length, 4);
   NodeFS.writeFileSync(file, Buffer.concat([sizePickle, headerPickle, ...chunks]));
+  return sha256(json);
 }
 
 function sha256(buffer) {

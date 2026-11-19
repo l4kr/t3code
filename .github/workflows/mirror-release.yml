@@ -60,31 +60,19 @@ jobs:
             fi
           fi
 
-  windows:
+  build:
     needs: pick
     if: needs.pick.outputs.skip != 'true'
-    runs-on: windows-latest
-    timeout-minutes: 60
-    defaults:
-      run:
-        shell: bash
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
-      SEVEN_ZIP: C:/Program Files/7-Zip/7z.exe
       TAG: ${{ needs.pick.outputs.tag }}
       VERSION: ${{ needs.pick.outputs.version }}
     steps:
-      - name: Keep line endings
-        run: git config --global core.autocrlf false
-
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Download upstream installer
-        run: >
-          gh release download "$TAG" --repo "$UPSTREAM"
-          --pattern "T3-Code-$VERSION-x64.exe" --dir "$RUNNER_TEMP/upstream"
 
       - name: Check out the release with fork changes
         run: |
@@ -98,10 +86,12 @@ jobs:
           if [ -s "$RUNNER_TEMP/fork.patch" ]; then git apply --3way "$RUNNER_TEMP/fork.patch"; fi
 
       - name: Read upstream build config
-        run: >
-          node "$RUNNER_TEMP/fork-tools/upstream-client-env.mjs"
-          --installer "$RUNNER_TEMP/upstream/T3-Code-$VERSION-x64.exe"
-          --7z "$SEVEN_ZIP" --work "$RUNNER_TEMP" >> "$GITHUB_ENV"
+        run: |
+          gh release download "$TAG" --repo "$UPSTREAM" --pattern "T3-Code-$VERSION-arm64.zip" --dir "$RUNNER_TEMP/upstream"
+          zip="$RUNNER_TEMP/upstream/T3-Code-$VERSION-arm64.zip"
+          entry="$(unzip -Z1 "$zip" | grep -m1 'Contents/Resources/app\.asar$')"
+          unzip -p "$zip" "$entry" > "$RUNNER_TEMP/app.asar"
+          node "$RUNNER_TEMP/fork-tools/upstream-client-env.mjs" --asar "$RUNNER_TEMP/app.asar" --work "$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Setup dependencies
         uses: ./.github/actions/setup-ci-deps
@@ -120,17 +110,42 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  windows:
+    needs: [pick, build]
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SEVEN_ZIP: C:/Program Files/7-Zip/7z.exe
+      TAG: ${{ needs.pick.outputs.tag }}
+      VERSION: ${{ needs.pick.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-dist
+          path: ${{ runner.temp }}/server-dist
+
+      - name: Download upstream installer
+        run: >
+          gh release download "$TAG" --repo "$UPSTREAM"
+          --pattern "T3-Code-$VERSION-x64.exe" --dir "$RUNNER_TEMP/upstream"
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - name: Repack
         run: >
-          node "$RUNNER_TEMP/fork-tools/repack-windows.mjs"
+          node fork/repack-windows.mjs
           --installer "$RUNNER_TEMP/upstream/T3-Code-$VERSION-x64.exe"
           --tag "$TAG"
           --repo "$GITHUB_REPOSITORY"
-          --server-dist apps/server/dist
+          --server-dist "$RUNNER_TEMP/server-dist"
           --out "$RUNNER_TEMP/out"
           --work "$RUNNER_TEMP/work"
           --7z "$SEVEN_ZIP"
@@ -145,19 +160,106 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  macos:
+    needs: [pick, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.pick.outputs.tag }}
+      VERSION: ${{ needs.pick.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-dist
+          path: ${{ runner.temp }}/server-dist
+
+      - name: Download upstream app
+        run: >
+          gh release download "$TAG" --repo "$UPSTREAM"
+          --pattern "T3-Code-$VERSION-${{ matrix.arch }}.zip" --dir "$RUNNER_TEMP/upstream"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Import signing certificate
+        id: cert
+        env:
+          MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -hex 24)"
+          echo "$MAC_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          curl -sSLf -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$keychain" -T /usr/bin/codesign || true
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          identity="$(security find-identity -v -p codesigning "$keychain" | awk '/Developer ID Application/ { print $2; exit }')"
+          if [ -z "$identity" ]; then echo "::error::No Developer ID Application identity in the certificate"; exit 1; fi
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+          echo "keychain=$keychain" >> "$GITHUB_OUTPUT"
+
+      - name: Repack, sign and notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: >
+          node fork/repack-macos.mjs
+          --zip "$RUNNER_TEMP/upstream/T3-Code-$VERSION-${{ matrix.arch }}.zip"
+          --arch "${{ matrix.arch }}"
+          --tag "$TAG"
+          --repo "$GITHUB_REPOSITORY"
+          --server-dist "$RUNNER_TEMP/server-dist"
+          --identity "${{ steps.cert.outputs.identity }}"
+          --keychain "${{ steps.cert.outputs.keychain }}"
+          --out "$RUNNER_TEMP/out"
+          --work "$RUNNER_TEMP/work"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-mac-${{ matrix.arch }}
+          path: ${{ runner.temp }}/out/T3-Code-${{ env.VERSION }}-${{ matrix.arch }}.zip
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Remove signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+
   publish:
-    needs: [pick, windows]
+    needs: [pick, windows, macos]
+    if: ${{ !cancelled() && needs.windows.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.pick.outputs.tag }}
+      VERSION: ${{ needs.pick.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           pattern: release-*
           path: release
           merge-multiple: true
+
+      - name: Write the macOS update feed
+        run: node fork/mac-update-feed.mjs --version "$VERSION" --dir release
 
       - name: Publish
         run: |
