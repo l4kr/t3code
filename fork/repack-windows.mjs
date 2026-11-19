@@ -45,9 +45,9 @@ run(sevenZip, ["x", "-y", `-o${appDir}`, NodePath.join(nsisDir, "$PLUGINSDIR", "
 const resourcesDir = NodePath.join(appDir, "resources");
 const asarPath = NodePath.join(resourcesDir, "app.asar");
 const serverAsarPath = NodePath.join(resourcesDir, "server.asar");
-const productExe = fs
-  .readdirSync(appDir)
-  .find((name) => name.endsWith(".exe") && name.startsWith("T3 Code"));
+const productExe = NodeFS.readdirSync(appDir).find(
+  (name) => name.endsWith(".exe") && name.startsWith("T3 Code"),
+);
 if (!productExe) throw new Error(`No "T3 Code*.exe" in ${appDir}`);
 const productName = productExe.slice(0, -".exe".length);
 
