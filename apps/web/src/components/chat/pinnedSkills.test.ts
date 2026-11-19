@@ -2,7 +2,12 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ServerProviderSkill } from "@t3tools/contracts";
 
-import { pickableSkills, resolvePinnedSkills, togglePinnedSkill } from "./pinnedSkills";
+import {
+  pickableSkills,
+  resolvePinnedSkills,
+  setPinnedSkillBackground,
+  togglePinnedSkill,
+} from "./pinnedSkills";
 
 function makeSkill(input: Partial<ServerProviderSkill> & Pick<ServerProviderSkill, "name">) {
   return {
@@ -11,8 +16,6 @@ function makeSkill(input: Partial<ServerProviderSkill> & Pick<ServerProviderSkil
     ...input,
   } satisfies ServerProviderSkill;
 }
-
-const names = (skills: ReadonlyArray<ServerProviderSkill>) => skills.map((skill) => skill.name);
 
 describe("pinned skills", () => {
   const skills = [
@@ -25,18 +28,49 @@ describe("pinned skills", () => {
   ];
 
   it("offers each skill a user can invoke once, alphabetically", () => {
-    expect(names(pickableSkills(skills))).toEqual(["code-review", "merge", "ship"]);
+    expect(pickableSkills(skills).map((skill) => skill.name)).toEqual([
+      "code-review",
+      "merge",
+      "ship",
+    ]);
   });
 
-  it("shows pinned skills in pin order and hides ones this agent cannot run", () => {
+  it("shows pinned skills in pin order with their start mode, hiding ones this agent cannot run", () => {
+    const pinned = [
+      { name: "ship", background: true },
+      { name: "missing" },
+      { name: "off" },
+      { name: "agent-only" },
+      { name: "Code-Review" },
+    ];
     expect(
-      names(resolvePinnedSkills(["ship", "missing", "off", "agent-only", "Code-Review"], skills)),
-    ).toEqual(["ship", "code-review"]);
+      resolvePinnedSkills(pinned, skills).map(({ skill, background }) => [skill.name, background]),
+    ).toEqual([
+      ["ship", true],
+      ["code-review", false],
+    ]);
   });
 
   it("pins at the end and unpins regardless of case", () => {
-    expect(togglePinnedSkill(["ship"], "merge", true)).toEqual(["ship", "merge"]);
-    expect(togglePinnedSkill(["ship", "merge"], "merge", true)).toEqual(["ship", "merge"]);
-    expect(togglePinnedSkill(["Ship", "merge"], "ship", false)).toEqual(["merge"]);
+    expect(togglePinnedSkill([{ name: "ship" }], "merge", true)).toEqual([
+      { name: "ship" },
+      { name: "merge" },
+    ]);
+    const pinned = [{ name: "ship" }, { name: "merge", background: true }];
+    expect(togglePinnedSkill(pinned, "merge", true)).toBe(pinned);
+    expect(togglePinnedSkill([{ name: "Ship" }, { name: "merge" }], "ship", false)).toEqual([
+      { name: "merge" },
+    ]);
+  });
+
+  it("switches one skill between foreground and background", () => {
+    const pinned = [{ name: "ship" }, { name: "merge" }];
+    expect(setPinnedSkillBackground(pinned, "SHIP", true)).toEqual([
+      { name: "ship", background: true },
+      { name: "merge" },
+    ]);
+    expect(setPinnedSkillBackground([{ name: "ship", background: true }], "ship", false)).toEqual([
+      { name: "ship" },
+    ]);
   });
 });

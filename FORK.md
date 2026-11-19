@@ -1,29 +1,40 @@
 # l4kr/t3code
 
-Official T3 Code for Windows x64, with Chromium smooth scrolling turned off.
+T3 Code for Windows x64, tracking upstream `pingdotgg/t3code`, with:
 
-## How it works
+- Chromium smooth scrolling turned off.
+- **Skills** in thread details: _Pick skills_ pins skills as one-click rows. Clicking one sends it.
+  Right-click a pinned skill for _Start in background_ (it starts its own thread and leaves you
+  where you are) or _Unpin_. Pins live in the browser's local storage.
 
-- `.github/workflows/mirror-release.yml` runs hourly. When `pingdotgg/t3code` publishes a new
-  stable release, it downloads the official `T3-Code-<version>-x64.exe` and runs
-  `fork/repack-windows.mjs`, which:
-  1. unpacks the app from the installer,
-  2. prepends `app.commandLine.appendSwitch("disable-smooth-scrolling")` to the Electron entry
-     inside `app.asar`,
-  3. rewrites `resources/app-update.yml` so the updater reads **this** repo's releases,
-  4. rebuilds the NSIS installer with upstream's electron-builder version, NSIS include, icon and
-     `app-builder-lib` patch, all fetched from the release tag.
-- The workflow publishes the installer, blockmap and `latest.yml` as a release here with the same tag,
-  title and notes as upstream. The installed app sees it and updates as usual.
+## Source sync
 
-Nothing is rebuilt from source; every other byte of the app is upstream's build.
+`.github/workflows/sync-upstream.yml` merges upstream `main` into `main` hourly.
 
-## Notes
+- Upstream's workflows are parked, unchanged, in `fork/upstream-workflows/` so they never run here.
+  Git's rename detection carries upstream's edits into them; new ones are moved there on merge.
+- Any other conflict stops the run and lists the files in the run summary. Merge locally then.
+- Pushing upstream commits that touch workflows needs a `FORK_SYNC_TOKEN` secret: a fine-grained
+  token for this repository with **Contents** and **Workflows** read/write.
 
-- Upstream's workflows are removed from this branch so they don't run in the fork.
-- Builds are unsigned, so `app-update.yml` has no `publisherName` (electron-updater then skips
-  signature checks). Only the first manual install shows a SmartScreen prompt.
-- Stable channel, x64 only. Switching the app to the nightly channel finds no updates here.
-- If upstream changes its packaging (app ID, icon path, builder patch), the script fails loudly and
-  the app stays on the last mirrored version until `fork/repack-windows.mjs` is updated.
-- Rebuild a specific tag: Actions -> Mirror upstream release -> Run workflow -> tag.
+## Releases
+
+`.github/workflows/mirror-release.yml` runs hourly. For each new stable upstream release it:
+
+1. checks out the upstream tag and applies this fork's changes (`main` minus upstream, excluding
+   `.github/`, `fork/` and this file),
+2. builds the web client with the T3 Connect config read from upstream's own build
+   (`fork/upstream-client-env.mjs`; telemetry tokens are left out),
+3. repacks upstream's official installer (`fork/repack-windows.mjs`): swaps in that web client,
+   disables smooth scrolling, points the updater at this repo, and rebuilds the NSIS installer,
+4. publishes it here with upstream's tag, title and notes, so the installed app updates as usual.
+
+The server, desktop shell and native parts stay upstream's build.
+
+- Fork changes ship with the next upstream release. To get them now, run _Mirror upstream release_
+  with _replace_ checked; an installed app on that version needs a manual reinstall.
+- Builds are unsigned, so `app-update.yml` has no `publisherName`. Only the first manual install
+  shows a SmartScreen prompt.
+- Stable channel, x64 only.
+- If upstream changes its packaging or client bundle shape, the scripts fail loudly and the app
+  stays on the last mirrored version.
