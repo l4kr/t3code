@@ -4003,6 +4003,7 @@ export default function ChatView(props: ChatViewProps) {
                     contextWindow: activeContextWindow,
                   }}
                   providerSkills={timelineSkills}
+                  providerSkillsRescannedAt={activeProviderStatus?.workspaceRescannedAt}
                   onUseSkill={(skill, background) =>
                     void runPinnedSkill({
                       skill,

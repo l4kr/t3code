@@ -94,6 +94,8 @@ export class ProviderRegistry extends Context.Service<
       readonly fresh?: boolean;
     }) => Effect.Effect<ReadonlyArray<ServerProvider>>;
 
+    readonly rescanWorkspaceSkills: Effect.Effect<number>;
+
     /**
      * Drop T3-owned model caches before an explicit model refresh. Pass the
      * target of the refresh that follows. Background and ordinary refreshes
@@ -1096,6 +1098,7 @@ export const layer = Layer.effect(
       readonly fresh?: boolean;
       // Set by an instance's own report that its workspace skills changed.
       readonly rescan?: ProviderInstance;
+      readonly announce?: boolean;
     }) {
       const workspaceSnapshotOf = (candidate: ServerProvider | undefined) =>
         candidate?.workspaceSnapshots?.find((s) => s.cwd === input.cwd);
@@ -1194,10 +1197,11 @@ export const layer = Layer.effect(
                   const rescanned = workspaceSnapshotOf(scanned);
                   const held = heldBeforeWait ?? scanBase;
                   return input.rescan &&
-                    !(
-                      Equal.equals(rescanned?.skills, held?.skills) &&
-                      Equal.equals(rescanned?.slashCommands, held?.slashCommands)
-                    )
+                    (input.announce ||
+                      !(
+                        Equal.equals(rescanned?.skills, held?.skills) &&
+                        Equal.equals(rescanned?.slashCommands, held?.slashCommands)
+                      ))
                     ? { ...scanned, workspaceRescannedAt: scannedAt }
                     : scanned;
                 });
@@ -1248,6 +1252,24 @@ export const layer = Layer.effect(
         Effect.ignoreCause({ log: true }),
       ),
     ).pipe(Effect.forkScoped);
+
+    const rescanWorkspaceSkills = Effect.gen(function* () {
+      let rescanned = 0;
+      for (const provider of yield* Ref.get(providersRef)) {
+        const instance = yield* instanceRegistry.getInstance(provider.instanceId);
+        if (!instance) continue;
+        for (const { cwd } of provider.workspaceSnapshots ?? []) {
+          yield* refreshWorkspaceSnapshot({
+            instanceId: provider.instanceId,
+            cwd,
+            rescan: instance,
+            announce: true,
+          });
+          rescanned += 1;
+        }
+      }
+      return rescanned;
+    }).pipe(Effect.withSpan("ProviderRegistry.rescanWorkspaceSkills"));
 
     const invalidateModelCaches = Effect.fn("ProviderRegistry.invalidateModelCaches")(function* (
       input: Parameters<ProviderRegistry["Service"]["invalidateModelCaches"]>[0],
@@ -1300,6 +1322,9 @@ export const layer = Layer.effect(
         applySecretAndRefresh(reference, value).pipe(Effect.catchCause(recoverRefreshFailure)),
       refreshWorkspaceSnapshot: (input) =>
         refreshWorkspaceSnapshot(input).pipe(Effect.catchCause(recoverRefreshFailure)),
+      rescanWorkspaceSkills: rescanWorkspaceSkills.pipe(
+        Effect.catchCause((cause) => Effect.logError(cause).pipe(Effect.as(0))),
+      ),
       refreshAfterUpdate,
       invalidateModelCaches,
       refreshModelCatalog: refreshModelCatalog().pipe(

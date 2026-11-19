@@ -7,6 +7,8 @@ T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `
   unpinned thread) or _Unpin_. Pins live in the browser's local storage.
   Pinned skills show names in sentence case and an `icon.png` from beside the skill's `SKILL.md`;
   _Change icon_ in the right-click menu overrides it for that browser, and _Reset icon_ drops that.
+- **`t3 skills rescan`**: the running app rescans skills in every workspace it holds and tells open
+  windows to reload them, icons included. Lstack's `sync.py` runs it after each sync.
 - **Codex accounts**: each shadow home keeps its own `auth.json.lock`, so newer Codex CLIs no longer
   stop extra accounts from starting.
 - **Branch cleanup**: when storage cleanup removes a settled thread's worktree, it also deletes the

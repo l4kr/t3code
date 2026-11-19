@@ -95,6 +95,7 @@ interface ThreadDetailsPanelProps extends Pick<
   onDeleteProjectScript: (scriptId: string) => Promise<ProjectScriptActionResult>;
   usage: ThreadDetailsUsageInput;
   providerSkills?: ReadonlyArray<ServerProviderSkill>;
+  providerSkillsRescannedAt?: string | undefined;
   onUseSkill?: (skill: ServerProviderSkill, background: boolean) => void;
 }
 
@@ -241,6 +242,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                   environmentId={props.environmentId}
                   threadId={props.threadId}
                   skills={props.providerSkills}
+                  rescannedAt={props.providerSkillsRescannedAt}
                   onUseSkill={props.onUseSkill}
                 />
               ) : null}

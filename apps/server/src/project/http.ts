@@ -13,6 +13,7 @@ import {
   requireEnvironmentScope,
 } from "../auth/http.ts";
 import { traceLocalHandlerWork } from "../cloud/traceRelayRequest.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerRuntimeStartup from "../serverRuntimeStartup.ts";
 import * as ProjectCloneTracker from "./ProjectCloneTracker.ts";
 import * as ProjectService from "./ProjectService.ts";
@@ -39,6 +40,7 @@ export const layer = HttpApiBuilder.group(
     const projects = yield* ProjectService.ProjectService;
     const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
     const projectClones = yield* ProjectCloneTracker.ProjectCloneTracker;
+    const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
 
     return handlers
       .handle(
@@ -63,6 +65,16 @@ export const layer = HttpApiBuilder.group(
           return yield* startup
             .enqueueCommand(operation)
             .pipe(traceLocalHandlerWork, Effect.catch(failProjectMutation));
+        }),
+      )
+      .handle(
+        "rescanSkills",
+        Effect.fn("environment.projects.rescanSkills")(function* (args) {
+          yield* annotateEnvironmentRequest(args.endpoint.name);
+          yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          const rescanned =
+            yield* providerRegistry.rescanWorkspaceSkills.pipe(traceLocalHandlerWork);
+          return { rescanned };
         }),
       );
   }),

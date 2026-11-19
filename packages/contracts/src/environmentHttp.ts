@@ -404,6 +404,11 @@ const EnvironmentSessionRevokeErrors = [
   EnvironmentOperationForbiddenError,
   EnvironmentInternalError,
 ] as const;
+export const ProjectSkillsRescanResult = Schema.Struct({
+  rescanned: Schema.Number,
+});
+export type ProjectSkillsRescanResult = typeof ProjectSkillsRescanResult.Type;
+
 const EnvironmentProjectSnapshotErrors = [
   EnvironmentScopeRequiredError,
   EnvironmentInternalError,
@@ -817,6 +822,13 @@ class EnvironmentProjectsHttpApi extends HttpApiGroup.make("projects")
       payload: ProjectMutation,
       success: Project,
       error: EnvironmentProjectMutationErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("rescanSkills", "/api/projects/skills/rescan", {
+      headers: OptionalBearerHeaders,
+      success: ProjectSkillsRescanResult,
+      error: EnvironmentProjectSnapshotErrors,
     }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 

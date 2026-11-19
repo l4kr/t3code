@@ -46,16 +46,19 @@ function SkillIcon({
   skill,
   chosen,
   background,
+  rescannedAt,
 }: {
   environmentId: EnvironmentId;
   threadId: ThreadId;
   skill: ServerProviderSkill;
   chosen: string | null;
   background: boolean;
+  rescannedAt: string | undefined;
 }) {
   const asset = useAssetUrlState(
     chosen === null ? environmentId : null,
     chosen === null ? { _tag: "media-file", threadId, path: skillIconFilePath(skill) } : null,
+    rescannedAt ?? null,
   );
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const url = chosen ?? (asset._tag === "Success" ? asset.url : null);
@@ -105,11 +108,13 @@ export function ThreadDetailsSkills({
   environmentId,
   threadId,
   skills,
+  rescannedAt,
   onUseSkill,
 }: {
   environmentId: EnvironmentId;
   threadId: ThreadId;
   skills: ReadonlyArray<ServerProviderSkill>;
+  rescannedAt?: string | undefined;
   onUseSkill: (skill: ServerProviderSkill, background: boolean) => void;
 }) {
   const gt = useGT();
@@ -162,6 +167,7 @@ export function ThreadDetailsSkills({
                 skill={skill}
                 chosen={chosenSkillIcon(icons, skill.name)}
                 background={background}
+                rescannedAt={rescannedAt}
               />
               <span className={cn("min-w-0 truncate", THREAD_DETAILS_PANEL_LABEL_CLASS)}>
                 {skillLabel(skill)}

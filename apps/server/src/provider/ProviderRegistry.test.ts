@@ -2567,6 +2567,33 @@ it.layer(
       }),
     );
 
+    it.effect("rescans every workspace it holds when asked to rescan skills", () =>
+      Effect.gen(function* () {
+        const h = yield* makeWorkspaceRescanHarness;
+        yield* h.seed("/barrier");
+        yield* h.seed("/workspace");
+        const rescan = yield* h.registry.rescanWorkspaceSkills.pipe(Effect.forkChild);
+        yield* (yield* h.nextScan("/barrier"))("initial");
+        yield* (yield* h.nextScan("/workspace"))("synced");
+        assert.equal(yield* Fiber.join(rescan), 2);
+        assert.deepEqual(yield* h.skillsOf("/barrier"), ["initial"]);
+        assert.deepEqual(yield* h.skillsOf("/workspace"), ["synced"]);
+        assert.isString(yield* h.rescannedAtOf);
+      }),
+    );
+
+    it.effect("tells clients to fetch again after a requested rescan that changed nothing", () =>
+      Effect.gen(function* () {
+        const h = yield* makeWorkspaceRescanHarness;
+        yield* h.seed("/workspace");
+        assert.isUndefined(yield* h.rescannedAtOf);
+        const rescan = yield* h.registry.rescanWorkspaceSkills.pipe(Effect.forkChild);
+        yield* (yield* h.nextScan("/workspace"))("initial");
+        assert.equal(yield* Fiber.join(rescan), 1);
+        assert.isString(yield* h.rescannedAtOf);
+      }),
+    );
+
     it.effect("stamps a rescan whose awaited scan already published the change", () =>
       Effect.gen(function* () {
         const h = yield* makeWorkspaceRescanHarness;
