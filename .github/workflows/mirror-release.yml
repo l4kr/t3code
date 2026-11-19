@@ -1,9 +1,5 @@
 name: Mirror upstream release
 
-# Rebuilds each stable upstream T3 Code release for Windows x64 with smooth
-# scrolling disabled, and publishes it here. The installed app's updater points
-# at this repository, so it updates from these releases. See FORK.md.
-
 on:
   schedule:
     - cron: "41 * * * *"
@@ -15,6 +11,10 @@ on:
       tag:
         description: Upstream tag to rebuild (default latest stable)
         required: false
+      replace:
+        description: Replace the release if this tag is already mirrored
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -27,17 +27,22 @@ concurrency:
 jobs:
   mirror:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
     env:
       GH_TOKEN: ${{ github.token }}
       UPSTREAM: pingdotgg/t3code
+      SEVEN_ZIP: C:/Program Files/7-Zip/7z.exe
     steps:
-      - uses: actions/checkout@v4
+      - name: Keep line endings
+        run: git config --global core.autocrlf false
 
-      # GitHub pauses schedules in repos without commits for 60 days; re-enabling resets that.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Keep schedule alive
         run: gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/mirror-release.yml/enable" || true
 
@@ -45,19 +50,19 @@ jobs:
         id: pick
         env:
           INPUT_TAG: ${{ inputs.tag }}
+          REPLACE: ${{ inputs.replace }}
         run: |
           tag="${INPUT_TAG:-$(gh api "repos/$UPSTREAM/releases/latest" --jq .tag_name)}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            echo "$tag is already mirrored."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+            if [ "$REPLACE" = "true" ]; then
+              echo "replace=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$tag is already mirrored."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            fi
           fi
-
-      - uses: actions/setup-node@v4
-        if: steps.pick.outputs.skip != 'true'
-        with:
-          node-version: 22
 
       - name: Download upstream installer
         if: steps.pick.outputs.skip != 'true'
@@ -65,25 +70,63 @@ jobs:
           gh release download "${{ steps.pick.outputs.tag }}" --repo "$UPSTREAM"
           --pattern "T3-Code-${{ steps.pick.outputs.version }}-x64.exe" --dir "$RUNNER_TEMP/upstream"
 
+      - name: Check out the release with fork changes
+        if: steps.pick.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.pick.outputs.tag }}
+        run: |
+          cp -r fork "$RUNNER_TEMP/fork-tools"
+          git fetch --no-tags "https://github.com/$UPSTREAM.git" \
+            +refs/heads/main:refs/remotes/upstream/main "+refs/tags/$TAG:refs/tags/$TAG"
+          base="$(git merge-base HEAD upstream/main)"
+          git diff --binary "$base" HEAD -- . ':(exclude).github' ':(exclude)fork' ':(exclude)FORK.md' > "$RUNNER_TEMP/fork.patch"
+          git diff --stat "$base" HEAD -- . ':(exclude).github' ':(exclude)fork' ':(exclude)FORK.md'
+          git checkout -q --detach "$TAG"
+          if [ -s "$RUNNER_TEMP/fork.patch" ]; then git apply --3way "$RUNNER_TEMP/fork.patch"; fi
+
+      - name: Read upstream client config
+        if: steps.pick.outputs.skip != 'true'
+        run: >
+          node "$RUNNER_TEMP/fork-tools/upstream-client-env.mjs"
+          --installer "$RUNNER_TEMP/upstream/T3-Code-${{ steps.pick.outputs.version }}-x64.exe"
+          --7z "$SEVEN_ZIP" --work "$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - name: Setup dependencies
+        if: steps.pick.outputs.skip != 'true'
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=@t3tools/web...
+
+      - name: Build web client
+        if: steps.pick.outputs.skip != 'true'
+        run: vp run --filter @t3tools/web build
+
+      - uses: actions/setup-node@v4
+        if: steps.pick.outputs.skip != 'true'
+        with:
+          node-version: 22
+
       - name: Repack
         if: steps.pick.outputs.skip != 'true'
         run: >
-          node fork/repack-windows.mjs
+          node "$RUNNER_TEMP/fork-tools/repack-windows.mjs"
           --installer "$RUNNER_TEMP/upstream/T3-Code-${{ steps.pick.outputs.version }}-x64.exe"
           --tag "${{ steps.pick.outputs.tag }}"
           --repo "$GITHUB_REPOSITORY"
+          --client apps/web/dist
           --out "$RUNNER_TEMP/out"
           --work "$RUNNER_TEMP/work"
-          --7z "C:/Program Files/7-Zip/7z.exe"
+          --7z "$SEVEN_ZIP"
 
-      # gh uploads assets to a draft and publishes it last, so the updater never
-      # sees a release without latest.yml.
       - name: Publish
         if: steps.pick.outputs.skip != 'true'
         run: |
           tag="${{ steps.pick.outputs.tag }}"
           version="${{ steps.pick.outputs.version }}"
-          gh release view "$tag" --repo "$UPSTREAM" --json name,body --jq .name > "$RUNNER_TEMP/title.txt"
+          if [ "${{ steps.pick.outputs.replace }}" = "true" ]; then
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+          gh release view "$tag" --repo "$UPSTREAM" --json name --jq .name > "$RUNNER_TEMP/title.txt"
           gh release view "$tag" --repo "$UPSTREAM" --json body --jq .body > "$RUNNER_TEMP/notes.md"
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
             --title "$(cat "$RUNNER_TEMP/title.txt")" --notes-file "$RUNNER_TEMP/notes.md" \

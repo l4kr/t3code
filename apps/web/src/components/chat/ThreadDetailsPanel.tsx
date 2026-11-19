@@ -4,8 +4,10 @@ import type {
   ProjectId,
   ProjectScript,
   ResolvedKeybindingsConfig,
+  ServerProviderSkill,
   ThreadId,
 } from "@t3tools/contracts";
+import { ThreadDetailsSkills } from "./ThreadDetailsSkills";
 
 import type { DraftId } from "../../composerDraftStore";
 import { useT3ProjectFileScripts } from "../../hooks/useT3ProjectFileScripts";
@@ -84,6 +86,8 @@ interface ThreadDetailsPanelProps extends Pick<
   ) => Promise<ProjectScriptActionResult>;
   onDeleteProjectScript: (scriptId: string) => Promise<ProjectScriptActionResult>;
   usage: ThreadDetailsUsageInput;
+  providerSkills: ReadonlyArray<ServerProviderSkill>;
+  onUseSkill: (skill: ServerProviderSkill) => void;
 }
 
 export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
@@ -210,6 +214,10 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                     ) : null}
                   </div>
                 </ThreadDetailsSection>
+              ) : null}
+
+              {density !== "essential" && visible.skills ? (
+                <ThreadDetailsSkills skills={props.providerSkills} onUseSkill={props.onUseSkill} />
               ) : null}
 
               {props.gitCwd && (show.branch || show.git) ? (

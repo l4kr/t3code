@@ -15,6 +15,9 @@
       ],
       "vite": { "entry": [".github/**/*.test.cjs"] },
       "vitest": { "entry": [".github/**/*.test.cjs"] },
+      "github-actions": {
+        "config": [".github/workflows/*.{yml,yaml}", "fork/upstream-workflows/*.yml"],
+      },
     },
     "scripts": {
       // Knip loads its preprocessor through a CLI option; native verification and
