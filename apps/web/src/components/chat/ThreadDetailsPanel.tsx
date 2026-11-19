@@ -236,10 +236,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                 </ThreadDetailsSection>
               ) : null}
 
-              {density !== "essential" &&
-              visible.skills &&
-              props.providerSkills &&
-              props.onUseSkill ? (
+              {density !== "essential" && props.providerSkills && props.onUseSkill ? (
                 <ThreadDetailsSkills skills={props.providerSkills} onUseSkill={props.onUseSkill} />
               ) : null}
 
