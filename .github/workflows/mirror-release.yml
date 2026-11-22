@@ -79,11 +79,43 @@ jobs:
           cp -r fork "$RUNNER_TEMP/fork-tools"
           git fetch --no-tags "https://github.com/$UPSTREAM.git" \
             +refs/heads/main:refs/remotes/upstream/main "+refs/tags/$TAG:refs/tags/$TAG"
-          base="$(git merge-base HEAD upstream/main)"
-          git diff --binary "$base" HEAD -- . ':(exclude).github' ':(exclude)fork' ':(exclude)FORK.md' > "$RUNNER_TEMP/fork.patch"
-          git diff --stat "$base" HEAD -- . ':(exclude).github' ':(exclude)fork' ':(exclude)FORK.md'
-          git checkout -q --detach "$TAG"
-          if [ -s "$RUNNER_TEMP/fork.patch" ]; then git apply --3way "$RUNNER_TEMP/fork.patch"; fi
+          excludes=(
+            ':(exclude).github'
+            ':(exclude)fork'
+            ':(exclude)FORK.md'
+            ':(exclude)**/*.test.ts'
+            ':(exclude)**/*.test.tsx'
+          )
+          ref="$(git rev-parse HEAD)"
+          while :; do
+            base="$(git merge-base "$ref" upstream/main)"
+            git diff --binary "$base" "$ref" -- . "${excludes[@]}" > "$RUNNER_TEMP/fork.patch"
+            git checkout -q --detach --force "$TAG"
+            git clean -fdq
+            if [ ! -s "$RUNNER_TEMP/fork.patch" ] || git apply --3way "$RUNNER_TEMP/fork.patch"; then
+              echo "Applied fork changes from $(git rev-parse --short "$ref") (base $(git rev-parse --short "$base")) onto $TAG"
+              git diff --stat "$base" "$ref" -- . "${excludes[@]}"
+              break
+            fi
+            # Unwind post-$TAG upstream sync merges (and workflow/docs-only commits)
+            # when main has synced past $TAG into conflicting upstream edits.
+            if ! git rev-parse --verify -q "$ref^1" > /dev/null; then
+              exit 1
+            fi
+            if git rev-parse --verify -q "$ref^2" > /dev/null \
+              && git merge-base --is-ancestor "$ref^2" upstream/main \
+              && ! git merge-base --is-ancestor "$ref^2" "$TAG" \
+              && git log -1 --format=%s "$ref" | grep -Eq "^Merge $UPSTREAM main \([0-9a-f]+\)$"; then
+              echo "Retrying without post-$TAG upstream sync $(git rev-parse --short "$ref")..."
+              ref="$(git rev-parse "$ref^1")"
+            elif ! git rev-parse --verify -q "$ref^2" > /dev/null \
+              && git diff --quiet "$ref^1" "$ref" -- . "${excludes[@]}"; then
+              ref="$(git rev-parse "$ref^1")"
+            else
+              echo "::error::Fork changes at $(git rev-parse --short "$ref") do not apply cleanly onto $TAG"
+              exit 1
+            fi
+          done
 
       - name: Read upstream build config
         run: |
