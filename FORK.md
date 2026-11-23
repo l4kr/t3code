@@ -21,6 +21,8 @@ T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `
 
 - Upstream's workflows are parked, unchanged, in `fork/upstream-workflows/` so they never run here.
   Git's rename detection carries upstream's edits into them; new ones are moved there on merge.
+- A conflict where both sides only added lines at the same spot keeps both
+  (`fork/resolve-additive-conflicts.sh`); the merge commit and run summary list those files.
 - Any other conflict stops the run and lists the files in the run summary. Merge locally then.
 - Pushes use the `FORK_SYNC_TOKEN` secret, a token with Contents and Workflows write access.
 

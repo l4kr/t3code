@@ -52,6 +52,7 @@ jobs:
             git rm -q -f -- "$file"
             if [ -f "$target" ]; then git add -- "$target"; fi
           done
+          both_added="$(bash fork/resolve-additive-conflicts.sh)"
           conflicts="$(git diff --name-only --diff-filter=U)"
           if [ -n "$conflicts" ]; then
             git merge --abort
@@ -65,7 +66,18 @@ jobs:
             echo "::error::Upstream merge conflicts in: $(echo $conflicts)"
             exit 1
           fi
-          git commit -q --no-edit -m "Merge $UPSTREAM main ($(git rev-parse --short upstream/main))"
+          message="Merge $UPSTREAM main ($(git rev-parse --short upstream/main))"
+          if [ -n "$both_added" ]; then
+            body="$(printf 'Kept both sides where each only added lines:\n%s' "$(echo "$both_added" | sed 's/^/- /')")"
+            git commit -q --no-edit -m "$message" -m "$body"
+            {
+              echo "### Kept both sides of additive conflicts"
+              echo
+              echo "$both_added" | sed 's/^/- `/; s/$/`/'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            git commit -q --no-edit -m "$message"
+          fi
           echo "pushed=true" >> "$GITHUB_OUTPUT"
 
       - name: Push
