@@ -1264,15 +1264,18 @@ export const layer = Layer.effect(
                     slashCommandsPending:
                       scopedSnapshot.slashCommandsPending ?? scopedSnapshot.status === "error",
                   });
+                  if (input.rescan && input.announce) {
+                    return { ...scanned, workspaceRescannedAt: scannedAt };
+                  }
                   // Clients keep fetched snapshots, so a changed rescan must tell them to fetch again.
                   const rescanned = workspaceSnapshotOf(scanned);
                   const held = heldBeforeWait ?? scanBase;
                   return input.rescan &&
-                    (input.announce ||
-                      !(
-                        Equal.equals(rescanned?.skills, held?.skills) &&
-                        Equal.equals(rescanned?.slashCommands, held?.slashCommands)
-                      ))
+                    !(
+                      Equal.equals(rescanned?.skills, held?.skills) &&
+                      Equal.equals(rescanned?.models, held?.models) &&
+                      Equal.equals(rescanned?.slashCommands, held?.slashCommands)
+                    )
                     ? { ...scanned, workspaceRescannedAt: scannedAt }
                     : scanned;
                 });
