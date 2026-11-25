@@ -1,0 +1,10 @@
+[Unit]
+Description=Start an l4kr/t3code release build when upstream has a new stable release
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/.cache/l4kr-t3code
+ExecStartPre=/usr/bin/git pull -q --ff-only
+ExecStart=/usr/bin/bash fork/ensure-release.sh

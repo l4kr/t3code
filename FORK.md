@@ -56,3 +56,16 @@ Electron, the desktop shell and native parts stay upstream's builds. A fork chan
 - Stable channel only.
 - If upstream changes its packaging or client bundle shape, the scripts fail loudly and the app
   stays on the last mirrored version.
+
+### Keeping releases coming
+
+GitHub runs this repository's schedules hours late or not at all, and the release workflow has been
+found switched off more than once. `fork/ensure-release.sh` turns `mirror-release.yml` back on if it
+is off, and starts it when upstream's latest stable release isn't released here yet and no run is
+going. Two things run it:
+
+- every `Sync upstream source` run, as its last step;
+- nikador, every 15 minutes: `fork/release-watch/` holds the systemd user units, run from a sparse
+  clone at `~/.cache/l4kr-t3code` with `gh` signed in as l4kr.
+
+`bash fork/tests/ensure-release.test.sh` tests the script.
