@@ -9,3 +9,4 @@ apps/mobile/src/features/observability/observe.test.ts
 apps/mobile/src/features/observability/tracing.test.ts
 apps/server/src/cli/feedback.ts
 apps/server/src/cli/feedback.test.ts
+README.md

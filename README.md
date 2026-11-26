@@ -27,6 +27,22 @@ T3 Code runs the coding agents on your machine and gives them one fast interface
 
 It works with Claude Code, Codex, Cursor, OpenCode, Grok Build, Antigravity, Kiro, Pi, Muse Code, fx, and any [ACP](./docs/user/providers-acp.md) agent. If an agent is set up on your computer, T3 Code can control it.
 
+## How this fork differs from T3 Code
+
+This is [l4kr/t3code](https://github.com/l4kr/t3code), a fork that tracks each stable release of [T3 Code](https://github.com/pingdotgg/t3code). Download it from [Releases](https://github.com/l4kr/t3code/releases). Versions read `<T3 Code version>-l4kr.<build>`, so `0.1.13-l4kr.2` is T3 Code 0.1.13 with this fork's second build on top.
+
+- **No telemetry.** Nothing goes to T3 Code's analytics or to the Axiom traces of T3 Connect, Clerk sign-in has its own telemetry off, the mobile app never sends crash reports, and the usage-data notices are gone. T3 Connect itself still runs through T3 Code's relay.
+- **No agent feedback.** Agents get no feedback tools or instructions, Labs no longer offers it, and `t3 feedback` is gone.
+- **Automatic updates.** The desktop app and the background service install each new release without asking, once nothing on that machine is working: no thread running or waiting on you, no workflow step or scheduled task in progress, no terminal command running. The desktop app also waits until you have been away for five minutes or locked the screen.
+- **Environment links don't expire.** A link to another machine stays valid until you forget or revoke it, however long it sits unused.
+- **Browser and device windows.** A browser tab or a simulator opens in its own window instead of the right panel or the floating player.
+- **Skills** in thread details. Pin skills as one-click rows, start one in the background, and give it an icon.
+- **`t3 skills rescan`**. The running app rescans skills in every workspace and reloads them in open windows.
+- **Codex accounts.** Extra Codex accounts start with newer Codex CLIs.
+- **Branch cleanup.** Removing a settled thread's worktree also deletes its branch once every commit is on the default branch or its pull request merged.
+- **Windows smooth scrolling off.**
+- **Builds and updates from this repo.** The desktop apps, `t3 update` and SSH installs all download from this fork's releases. The macOS app is signed with this fork's own Developer ID, so passkeys in its in-app browser are unavailable. The Windows installer is unsigned. The mobile apps are T3 Code's own.
+
 ## What you get
 
 - **Your subscriptions.** T3 Code does not resell tokens. It drives the agents you are already signed in to.

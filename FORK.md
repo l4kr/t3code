@@ -1,6 +1,8 @@
 # l4kr/t3code
 
-T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `pingdotgg/t3code`, with:
+T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `pingdotgg/t3code`. How it
+differs for users is listed in [README.md](README.md#how-this-fork-differs-from-t3-code); every item
+here must appear there. In detail:
 
 - **Skills** in thread details: _Pick skills_ pins skills as one-click rows. Clicking one sends it.
   Right-click a pinned skill for _Start in background_ (it starts its own thread and opens the top
@@ -13,7 +15,7 @@ T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `
   stop extra accounts from starting.
 - **Branch cleanup**: when storage cleanup removes a settled thread's worktree, it also deletes the
   thread's branch if every commit is on the default branch or its pull request merged.
-- Windows only: Chromium smooth scrolling turned off.
+- **Windows smooth scrolling off**: Chromium smooth scrolling is turned off on Windows.
 - **Browser and device windows**: a browser tab or a simulator opens in its own window instead of
   the right panel or the floating player, and opening it again brings that window forward. The
   panel keeps its tabs as launchers. Closing the window hands a browser tab back to the main window,
@@ -71,8 +73,10 @@ upstream's numeric bundle version. Each step runs only if the one before could n
      builds the standalone `t3` runtime that `t3 serve`, the background service and SSH installs
      use, with upstream's `scripts/build-cli-archive.ts`, and smoke-tests it. `t3 update` and SSH
      installs download from this repo's releases.
-   - **publish**: writes `latest-mac.yml` and `SHA256SUMS` and publishes everything with upstream's
-     tag, title and notes.
+   - **publish**: writes `latest-mac.yml` and `SHA256SUMS` and publishes everything under upstream's
+     title. `fork/release-notes.mjs` writes the notes: a _This fork_ section with the fork's own
+     commits since the last release (none from upstream, the bot or release tooling), then
+     upstream's notes (or that upstream is unchanged), then the README's list of differences.
 
 The merge commit body and run summary list each file each step settled. A failed run leaves `main`
 and the last release as they were, and GitHub emails the failure.
@@ -97,5 +101,4 @@ and the last release as they were, and GitHub emails the failure.
   fork once by hand.
 - macOS passkeys in the in-app browser are unavailable: their entitlements need upstream's Apple team.
 - Stable channel only.
-- `bash fork/tests/sync.test.sh`, `bash fork/tests/telemetry-guard.test.sh` and
-  `bash fork/tests/desktop-dist.test.sh` test the scripts.
+- `fork/tests/*.test.sh` test the scripts and that every change listed above is in the README.
