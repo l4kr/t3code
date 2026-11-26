@@ -20,70 +20,63 @@ T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `
   hidden, so agents keep using it; the page reloads when it moves. Annotations made there land in
   the thread's composer in the main window, and _Send_ brings that thread forward to send. On the
   web, a window the browser blocks (one an agent opens) falls back to the panel or floating player.
-- **No background telemetry**, and nothing you can see or use changes. Product usage events
-  (`ingest.t3.codes`) go out only if you set `T3CODE_TELEMETRY_ENABLED=true` yourself; agent
-  feedback you choose to send still goes. T3 Connect relay traces (Axiom) never export: the server,
-  web client, desktop window and mobile app all go through `RelayTracing.layer`. Clerk, which signs
-  in to T3 Connect, gets `telemetry={false}` at every `<ClerkProvider>`. Mobile crash reports never
-  dispatch; the mobile switches stay but send nothing, and mobile only changes if you build it
-  yourself. Using T3 Connect still means talking to upstream's relay, which keeps its own logs.
-
-## Source sync
-
-`.github/workflows/sync-upstream.yml` merges upstream `main` into `main` hourly with
-`fork/sync.sh`. Each step only runs if the one before could not finish:
-
-1. **Rules, no tokens.** Upstream's workflows are parked, unchanged, in `fork/upstream-workflows/`
-   so they never run here; git's rename detection carries upstream's edits into them and new ones
-   are moved there. In the files listed in `fork/fork-owned.txt` (the telemetry cuts and their
-   tests), the fork's side of each conflicting hunk wins and upstream's other hunks stay. A conflict
-   where both sides only added lines at the same spot keeps both
-   (`fork/resolve-additive-conflicts.sh`).
-2. **Claude**, for conflicts the rules leave. It gets `fork/claude-merge.md` and this file, edits the
-   working tree, and stages; the script refuses its result if anything is unmerged or still has
-   conflict markers, and then nothing is pushed.
-3. **Verify, no tokens.** `fork/verify.sh` typechecks every package the fork changes, runs the tests
-   of fork-changed files and `fork/tests/`, builds the server and web client, and runs
-   `fork/telemetry-guard.mjs`: it fails on a known telemetry SDK in any shipped package's
-   dependencies, a `<ClerkProvider>` without `telemetry={false}` (Clerk loads its reporting code from
-   its own servers, so no bundle scan sees it), or a telemetry endpoint, key or exporter in the
-   built bundle. If verification
-   fails, Claude gets its output once and its fix is folded into the merge commit; if it still
-   fails, nothing is pushed.
-
-The merge commit body and run summary list each file each step settled. Without Claude credentials
-the run stops where Claude would start, and the summary lists the files to merge by hand.
-
-- Claude uses the `CLAUDE_CODE_OAUTH_TOKEN` secret (`claude setup-token`, uses a Claude
-  subscription) or `ANTHROPIC_API_KEY`, with Opus at high effort and Claude Code's own telemetry
-  off. `FORK_CLAUDE_MODEL` and `FORK_CLAUDE_EFFORT` override them.
-- When a new fork change replaces a file outright, add it to `fork/fork-owned.txt`.
-- Pushes use the `FORK_SYNC_TOKEN` secret, a token with Contents and Workflows write access.
-- `bash fork/tests/sync.test.sh` and `bash fork/tests/telemetry-guard.test.sh` test the scripts.
+- **No telemetry**. Product usage events never leave the app, whatever the environment says;
+  agent feedback you choose to send still goes. T3 Connect relay traces (Axiom) never export: the
+  server, web client, desktop window and mobile app all go through `RelayTracing.layer`. Clerk,
+  which signs in to T3 Connect, gets `telemetry={false}` at every `<ClerkProvider>`. Mobile crash
+  reports never dispatch; the mobile switches stay but send nothing, and mobile only changes if you
+  build it yourself. The usage-data notices on the Welcome page and in Settings are gone. Using T3
+  Connect still means talking to upstream's relay, which keeps its own logs.
 
 ## Releases
 
-`.github/workflows/mirror-release.yml` runs hourly. For each new stable upstream release:
+Everything runs on GitHub. `.github/workflows/mirror-release.yml` checks hourly for a new stable
+upstream version and, when there is one, merges it, verifies it and publishes it; installed apps
+update themselves from this repo's releases. Each step runs only if the one before could not finish:
 
-1. **build** (Linux): checks out the upstream tag, applies this fork's changes (`main` minus
-   upstream, excluding `.github/`, `fork/` and this file), and builds the server and web client with
-   the T3 Connect config read from upstream's own build (`fork/upstream-client-env.mjs`; telemetry
-   tokens are left out). If the changes still conflict with the tag after unwinding later upstream
-   syncs, the same rules and then Claude resolve them, and the result is typechecked. The telemetry
-   guard must pass on the built bundle or nothing is released.
-2. **windows**: repacks upstream's installer (`fork/repack-windows.mjs`) with that server, smooth
-   scrolling off and the updater pointed at this repo.
-3. **macos** (arm64 and x64): repacks upstream's app (`fork/repack-macos.mjs`) with that server,
-   updates the asar integrity hash, drops the passkey entitlements tied to upstream's Apple team,
-   re-signs with this fork's Developer ID, and notarizes and staples it.
-4. **publish**: writes `latest-mac.yml` and publishes everything with upstream's tag, title and notes.
+1. **Rules, no tokens.** `fork/sync.sh merge` merges the upstream version's tag into `main`.
+   Upstream's workflows are parked, unchanged, in `fork/upstream-workflows/` so they never run here;
+   git's rename detection carries upstream's edits into them and new ones are moved there. In the
+   files listed in `fork/fork-owned.txt` (the telemetry cuts and their tests), the fork's side of each
+   conflicting hunk wins and upstream's other hunks stay. A conflict where both sides only added
+   lines at the same spot keeps both (`fork/resolve-additive-conflicts.sh`).
+2. **Claude**, for conflicts the rules leave. It gets `fork/claude-merge.md` and this file, edits the
+   working tree, and stages; the script refuses its result if anything is unmerged or still has
+   conflict markers, and then nothing is pushed.
+3. **Verify, no tokens.** `fork/sync.sh verify` runs `fork/verify.sh`: it typechecks every package
+   the fork changes, runs the tests of fork-changed files and `fork/tests/`, builds the server, web
+   client and desktop main process, and runs `fork/telemetry-guard.mjs`. The guard fails on a known
+   telemetry SDK in any shipped package's dependencies, a `<ClerkProvider>` without
+   `telemetry={false}` (Clerk loads its reporting code from its own servers, so no bundle scan sees
+   it), or a telemetry endpoint or exporter in the built bundle. If verification fails, Claude gets
+   its output once and its fix is folded into the merge commit; if it still fails, nothing is pushed
+   or released.
+4. **Ship.** `main` is pushed and its build is released:
+   - **windows**: repacks upstream's installer (`fork/repack-windows.mjs`) with the fork's server
+     and desktop main process, smooth scrolling off and the updater pointed at this repo.
+   - **macos** (arm64 and x64): repacks upstream's app (`fork/repack-macos.mjs`) the same way,
+     updates the asar integrity hash, drops the passkey entitlements tied to upstream's Apple team,
+     re-signs with this fork's Developer ID, and notarizes and staples it.
+   - **publish**: writes `latest-mac.yml` and publishes everything with upstream's tag, title and
+     notes.
 
-The desktop app's main process (`apps/desktop/dist-electron`) is built from fork source and swapped
-in (`fork/desktop-dist.mjs`); Electron and native parts stay upstream's builds. The swap fails loudly
-if the fork's build lacks an entry upstream ships or loads a module the app doesn't ship.
+The merge commit body and run summary list each file each step settled. A failed run leaves `main`
+and the last release as they were, and GitHub emails the failure.
 
-- Fork changes ship with the next upstream release. To get them now, run _Mirror upstream release_
-  with _replace_ checked; an installed app on that version needs a manual reinstall.
+- The server and web client build with the T3 Connect config read from upstream's own build
+  (`fork/upstream-client-env.mjs`; telemetry tokens are left out). The desktop main process
+  (`apps/desktop/dist-electron`) is built from fork source and swapped in (`fork/desktop-dist.mjs`);
+  Electron and native parts stay upstream's builds. The swap fails loudly if the fork's build lacks
+  an entry upstream ships or loads a module the app doesn't ship.
+- Claude uses the `CLAUDE_CODE_OAUTH_TOKEN` secret (`claude setup-token`, uses a Claude
+  subscription) or `ANTHROPIC_API_KEY`, with Opus at high effort and Claude Code's own telemetry
+  off. `FORK_CLAUDE_MODEL` and `FORK_CLAUDE_EFFORT` override them. Without either, the run stops
+  where Claude would start, and the summary lists the files to merge by hand.
+- When a new fork change replaces a file outright, add it to `fork/fork-owned.txt`.
+- Pushes use the `FORK_SYNC_TOKEN` secret, a token with Contents and Workflows write access.
+- Fork changes pushed to `main` ship with the next upstream version. To ship them now, run
+  _Release_ with _replace_ checked; an installed app on that version needs a manual reinstall.
+- Each run re-enables the workflow, since GitHub switches off schedules on quiet repositories.
 - Windows builds are unsigned, so `app-update.yml` has no `publisherName`. Only the first manual
   install shows a SmartScreen prompt.
 - macOS secrets: `MAC_CERT_P12_BASE64`, `MAC_CERT_PASSWORD` (Developer ID Application certificate),
@@ -92,18 +85,5 @@ if the fork's build lacks an entry upstream ships or loads a module the app does
   fork once by hand.
 - macOS passkeys in the in-app browser are unavailable: their entitlements need upstream's Apple team.
 - Stable channel only.
-- If upstream changes its packaging or client bundle shape, the scripts fail loudly and the app
-  stays on the last mirrored version.
-
-### Keeping releases coming
-
-GitHub runs this repository's schedules hours late or not at all, and the release workflow has been
-found switched off more than once. `fork/ensure-release.sh` turns `mirror-release.yml` back on if it
-is off, and starts it when upstream's latest stable release isn't released here yet and no run is
-going. Two things run it:
-
-- every `Sync upstream source` run, as its last step;
-- nikador, every 15 minutes: `fork/release-watch/` holds the systemd user units, run from a sparse
-  clone at `~/.cache/l4kr-t3code` with `gh` signed in as l4kr.
-
-`bash fork/tests/ensure-release.test.sh` tests the script.
+- `bash fork/tests/sync.test.sh`, `bash fork/tests/telemetry-guard.test.sh` and
+  `bash fork/tests/desktop-dist.test.sh` test the scripts.

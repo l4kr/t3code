@@ -89,6 +89,18 @@ t="$case_dir/fork/src/telemetry.ts"
 if [ $? -eq 0 ] && is_merge && [ "$(claude_calls)" = 0 ] && grep -qx 'noop(1)' "$t" && ! grep -q send "$t" \
   && grep -qx tail-upstream "$t" && git -C "$case_dir/fork" log -1 --format=%b | grep -q 'src/telemetry.ts'; then ok "$name"; else fail "$name"; fi
 
+name="a release tag: merges that version, not upstream main past it, with no Claude call"
+setup tag
+upstream sh -c 'echo nine >> src/app.ts && git add -A && git commit -qm release && git tag v1.2.3 && echo ten >> src/app.ts'
+sync env CLAUDE_BIN="$case_dir/bin/claude" UPSTREAM_REF=refs/tags/v1.2.3
+a="$case_dir/fork/src/app.ts"
+if [ $? -eq 0 ] && is_merge && [ "$(claude_calls)" = 0 ] && [ "$(head_subject)" = "Merge pingdotgg/t3code v1.2.3" ] \
+  && grep -qx nine "$a" && ! grep -qx ten "$a" && grep -qx FORK "$a"; then ok "$name"; else fail "$name"; fi
+
+name="a release tag main already has: does nothing"
+SYNC_STEP=merge sync env UPSTREAM_REF=refs/tags/v1.2.3
+if [ $? -eq 0 ] && [ "$(head_subject)" = "Merge pingdotgg/t3code v1.2.3" ]; then ok "$name"; else fail "$name"; fi
+
 name="new upstream workflow: parked under fork/upstream-workflows"
 setup workflow
 upstream sh -c 'echo "name: new" > .github/workflows/new.yml'
@@ -145,24 +157,5 @@ upstream sh -c 'echo nine >> src/app.ts'
 sync env
 SYNC_STEP=verify sync env CLAUDE_BIN="$case_dir/bin/claude" FORK_VERIFY=false
 if [ $? -ne 0 ] && [ "$(claude_calls)" = 1 ] && grep -qi 'verification' "$case_dir/summary"; then ok "$name"; else fail "$name"; fi
-
-name="fork patch onto a release tag: fork-owned conflicts take the fork side"
-setup release
-upstream sh -c 'printf "%s\n" "send(1, extra)" "send(2)" keep-a keep-b keep-c keep-d keep-e keep-f "tail" > src/telemetry.ts'
-(
-  cd "$case_dir/fork"
-  cp fork/fork-owned.txt "$case_dir/owned.txt"
-  git fetch -q "$case_dir/upstream" main:refs/remotes/upstream/main
-  base="$(git merge-base HEAD upstream/main)"
-  git diff --binary --full-index "$base" HEAD -- src > "$case_dir/fork.patch"
-  git checkout -q --detach upstream/main
-  git apply --3way "$case_dir/fork.patch" || true
-) > /dev/null 2>&1
-(
-  cd "$case_dir/fork"
-  FORK_SIDE=theirs FORK_OWNED="$case_dir/owned.txt" bash "$fork_dir/resolve-fork-owned.sh"
-) > "$case_dir/out" 2>&1
-t="$case_dir/fork/src/telemetry.ts"
-if [ -z "$(git -C "$case_dir/fork" diff --name-only --diff-filter=U)" ] && grep -qx 'noop(1)' "$t" && ! grep -q send "$t"; then ok "$name"; else fail "$name"; fi
 
 [ "$failures" -eq 0 ]

@@ -1,4 +1,4 @@
-name: Mirror upstream release
+name: Release
 
 on:
   schedule:
@@ -8,11 +8,8 @@ on:
     paths: [fork/**, .github/workflows/mirror-release.yml]
   workflow_dispatch:
     inputs:
-      tag:
-        description: Upstream tag to rebuild (default latest stable)
-        required: false
       replace:
-        description: Replace the release if this tag is already mirrored
+        description: Release the latest upstream version again, replacing this fork's release of it
         type: boolean
         default: false
 
@@ -45,17 +42,16 @@ jobs:
       - name: Pick release
         id: pick
         env:
-          INPUT_TAG: ${{ inputs.tag }}
           REPLACE: ${{ inputs.replace }}
         run: |
-          tag="${INPUT_TAG:-$(gh api "repos/$UPSTREAM/releases/latest" --jq .tag_name)}"
+          tag="$(gh api "repos/$UPSTREAM/releases/latest" --jq .tag_name)"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             if [ "$REPLACE" = "true" ]; then
               echo "replace=true" >> "$GITHUB_OUTPUT"
             else
-              echo "$tag is already mirrored."
+              echo "$tag is already released."
               echo "skip=true" >> "$GITHUB_OUTPUT"
             fi
           fi
@@ -64,91 +60,35 @@ jobs:
     needs: pick
     if: needs.pick.outputs.skip != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.pick.outputs.tag }}
       VERSION: ${{ needs.pick.outputs.version }}
+      UPSTREAM_REF: refs/tags/${{ needs.pick.outputs.tag }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    outputs:
+      sha: ${{ steps.push.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
+          token: ${{ secrets.FORK_SYNC_TOKEN || github.token }}
 
-      - name: Check out the release with fork changes
-        id: apply
-        env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - name: Setup Vite+
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install: "false"
+
+      - name: Merge the release into main
+        id: merge
         run: |
-          cp -r fork "$RUNNER_TEMP/fork-tools"
-          cp FORK.md "$RUNNER_TEMP/fork-tools/"
-          git fetch --no-tags "https://github.com/$UPSTREAM.git" \
-            +refs/heads/main:refs/remotes/upstream/main "+refs/tags/$TAG:refs/tags/$TAG"
-          excludes=(
-            ':(exclude).github'
-            ':(exclude)fork'
-            ':(exclude)FORK.md'
-            ':(exclude)**/*.test.ts'
-            ':(exclude)**/*.test.tsx'
-          )
-          ref="$(git rev-parse HEAD)"
-          while :; do
-            base="$(git merge-base "$ref" upstream/main)"
-            git diff --binary "$base" "$ref" -- . "${excludes[@]}" > "$RUNNER_TEMP/fork.patch"
-            git checkout -q --detach --force "$TAG"
-            git clean -fdq
-            if [ ! -s "$RUNNER_TEMP/fork.patch" ] || git apply --3way "$RUNNER_TEMP/fork.patch"; then
-              echo "Applied fork changes from $(git rev-parse --short "$ref") (base $(git rev-parse --short "$base")) onto $TAG"
-              git diff --stat "$base" "$ref" -- . "${excludes[@]}"
-              break
-            fi
-            # Unwind post-$TAG upstream sync merges (and workflow/docs-only commits)
-            # when main has synced past $TAG into conflicting upstream edits.
-            if ! git rev-parse --verify -q "$ref^1" > /dev/null; then
-              exit 1
-            fi
-            if git rev-parse --verify -q "$ref^2" > /dev/null \
-              && git merge-base --is-ancestor "$ref^2" upstream/main \
-              && ! git merge-base --is-ancestor "$ref^2" "$TAG" \
-              && git log -1 --format=%s "$ref" | grep -Eq "^Merge $UPSTREAM main \([0-9a-f]+\)$"; then
-              echo "Retrying without post-$TAG upstream sync $(git rev-parse --short "$ref")..."
-              ref="$(git rev-parse "$ref^1")"
-            elif ! git rev-parse --verify -q "$ref^2" > /dev/null \
-              && git diff --quiet "$ref^1" "$ref" -- . "${excludes[@]}"; then
-              ref="$(git rev-parse "$ref^1")"
-            else
-              if [ -z "$(git diff --name-only --diff-filter=U)" ]; then
-                echo "::error::Fork changes at $(git rev-parse --short "$ref") do not apply onto $TAG"
-                exit 1
-              fi
-              tools="$RUNNER_TEMP/fork-tools"
-              FORK_SIDE=theirs bash "$tools/resolve-fork-owned.sh"
-              bash "$tools/resolve-additive-conflicts.sh"
-              conflicts="$(git diff --name-only --diff-filter=U)"
-              if [ -n "$conflicts" ]; then
-                {
-                  echo "Resolve the conflicts left by \`git apply --3way\` of the fork's changes onto upstream release $TAG. Ours is the release, theirs is the fork. Nothing is committed here."
-                  echo
-                  echo "$conflicts" | sed 's/^/- /'
-                } > "$RUNNER_TEMP/task"
-                bash "$tools/claude.sh" "$RUNNER_TEMP/task"
-                left="$(git diff --name-only --diff-filter=U)"
-                marked="$(echo "$conflicts" | while read -r f; do [ -f "$f" ] && grep -lE '^(<{7}|>{7})( |$)' -- "$f"; done || true)"
-                if [ -n "$left$marked" ]; then
-                  echo "::error::Fork changes at $(git rev-parse --short "$ref") still conflict with $TAG in: $(echo $left $marked)"
-                  exit 1
-                fi
-                echo "claude=true" >> "$GITHUB_OUTPUT"
-                {
-                  echo "### Claude resolved the fork changes onto $TAG"
-                  echo
-                  echo "$conflicts" | sed 's/^/- `/; s/$/`/'
-                } >> "$GITHUB_STEP_SUMMARY"
-              fi
-              echo "Applied fork changes from $(git rev-parse --short "$ref") onto $TAG with conflicts resolved"
-              break
-            fi
-          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          bash fork/sync.sh merge
 
       - name: Read upstream build config
         run: |
@@ -156,32 +96,25 @@ jobs:
           zip="$RUNNER_TEMP/upstream/T3-Code-$VERSION-arm64.zip"
           entry="$(unzip -Z1 "$zip" | grep -m1 'Contents/Resources/app\.asar$')"
           unzip -p "$zip" "$entry" > "$RUNNER_TEMP/app.asar"
-          node "$RUNNER_TEMP/fork-tools/upstream-client-env.mjs" --asar "$RUNNER_TEMP/app.asar" --work "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          node fork/upstream-client-env.mjs --asar "$RUNNER_TEMP/app.asar" --work "$RUNNER_TEMP" > "$RUNNER_TEMP/client.env"
+          cat "$RUNNER_TEMP/client.env" >> "$GITHUB_ENV"
+          grep '^VITE_CLERK_PUBLISHABLE_KEY=' "$RUNNER_TEMP/client.env" | sed 's/^VITE_/T3CODE_/' >> "$GITHUB_ENV"
 
       - name: Setup dependencies
         uses: ./.github/actions/setup-ci-deps
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
-        with:
-          install-args: --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
 
-      - name: Typecheck Claude's resolution
-        if: steps.apply.outputs.claude == 'true'
+      - name: Verify, build, and refuse to ship telemetry
+        run: bash fork/sync.sh verify
+
+      - name: Push main
+        id: push
         run: |
-          (cd apps/server && vp run typecheck)
-          (cd apps/web && vp run typecheck)
-
-      - name: Build server and web client
-        run: vp run --filter t3 build
-
-      - name: Refuse to ship telemetry
-        run: node "$RUNNER_TEMP/fork-tools/telemetry-guard.mjs" --dist apps/server/dist
-
-      - name: Build desktop main process
-        working-directory: apps/desktop
-        run: |
-          node scripts/build-preview-annotation-css.mjs
-          T3CODE_CLERK_PUBLISHABLE_KEY="$VITE_CLERK_PUBLISHABLE_KEY" vp pack
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ] && ! git push origin HEAD:main; then
+            echo "::error::Push refused. Upstream commits that touch workflows need a FORK_SYNC_TOKEN secret: a fine-grained token for this repository with Contents and Workflows read/write."
+            exit 1
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git log --oneline -1
 
       - uses: actions/upload-artifact@v4
         with:
@@ -215,6 +148,8 @@ jobs:
       VERSION: ${{ needs.pick.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.sha }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -271,6 +206,8 @@ jobs:
       VERSION: ${{ needs.pick.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.sha }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -344,7 +281,7 @@ jobs:
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
 
   publish:
-    needs: [pick, windows, macos]
+    needs: [pick, build, windows, macos]
     if: ${{ !cancelled() && needs.windows.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -354,6 +291,8 @@ jobs:
       VERSION: ${{ needs.pick.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.sha }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -372,5 +311,5 @@ jobs:
           fi
           gh release view "$TAG" --repo "$UPSTREAM" --json name --jq .name > title.txt
           gh release view "$TAG" --repo "$UPSTREAM" --json body --jq .body > notes.md
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "${{ needs.build.outputs.sha }}" --latest \
             --title "$(cat title.txt)" --notes-file notes.md release/*

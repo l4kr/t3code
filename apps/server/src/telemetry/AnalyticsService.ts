@@ -332,8 +332,7 @@ export const make = Effect.gen(function* () {
 
   const record: AnalyticsService["Service"]["record"] = Effect.fn("AnalyticsService.record")(
     function* (event, properties, options) {
-      if (options?.anonymous !== true && !Option.getOrElse(telemetryConfig.enabled, () => false))
-        return false;
+      if (options?.anonymous !== true) return false;
       if (!(yield* telemetryEnabled) || !distinctId) return false;
 
       // Catch Node UUID defects too; best-effort telemetry drops events without UUIDs.

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
-base="${1:-upstream/main}"
+base="${1:-upstream/target}"
 
 mapfile -t changed < <(git diff --name-only "$base" HEAD -- . \
   ':(exclude).github' ':(exclude)fork' ':(exclude)FORK.md')

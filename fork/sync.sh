@@ -4,6 +4,8 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 UPSTREAM="${UPSTREAM:-pingdotgg/t3code}"
 url="${UPSTREAM_URL:-https://github.com/$UPSTREAM.git}"
+ref="${UPSTREAM_REF:-refs/heads/main}"
+target=upstream/target
 summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
 output="${GITHUB_OUTPUT:-/dev/null}"
 tmp="$(mktemp -d)"
@@ -20,15 +22,15 @@ with_markers() {
 }
 
 merge() {
-  git fetch --no-tags "$url" +refs/heads/main:refs/remotes/upstream/main
-  if git merge-base --is-ancestor upstream/main HEAD; then
+  git fetch --no-tags "$url" "+$ref:refs/remotes/$target"
+  if git merge-base --is-ancestor "$target" HEAD; then
     echo "Already up to date with $UPSTREAM."
     return 0
   fi
   local start
   start="$(git rev-parse HEAD)"
   git ls-files .github/workflows | sort -u > "$tmp/fork-workflows"
-  git merge --no-ff --no-commit upstream/main > /dev/null 2>&1 || true
+  git merge --no-ff --no-commit "$target" > /dev/null 2>&1 || true
 
   git diff --name-only --diff-filter=U -- fork/upstream-workflows | while read -r file; do
     if git cat-file -e ":3:$file" 2> /dev/null; then
@@ -53,7 +55,7 @@ merge() {
 
   if [ -n "$conflicts" ]; then
     {
-      echo "Resolve the conflicts of the \`git merge upstream/main\` in progress. Ours is the fork's main, theirs is upstream's."
+      echo "Resolve the conflicts of the \`git merge\` of $UPSTREAM $ref in progress. Ours is the fork's main, theirs is upstream's."
       echo
       echo "$conflicts" | bullets
     } > "$tmp/task"
@@ -89,7 +91,11 @@ merge() {
   fi
 
   local message body=""
-  message="Merge $UPSTREAM main ($(git rev-parse --short upstream/main))"
+  if [ "${ref#refs/tags/}" != "$ref" ]; then
+    message="Merge $UPSTREAM ${ref#refs/tags/}"
+  else
+    message="Merge $UPSTREAM ${ref#refs/heads/} ($(git rev-parse --short "$target"))"
+  fi
   section() {
     [ -n "$2" ] || return 0
     body="${body:+$body$'\n\n'}$1"$'\n'"$(echo "$2" | sed 's/^/- /')"
@@ -108,7 +114,7 @@ merge() {
 }
 
 verify() {
-  local cmd="${FORK_VERIFY:-bash $here/verify.sh upstream/main}"
+  local cmd="${FORK_VERIFY:-bash $here/verify.sh $target}"
   if bash -c "$cmd" > "$tmp/verify.log" 2>&1; then
     tail -n 20 "$tmp/verify.log"
     return 0

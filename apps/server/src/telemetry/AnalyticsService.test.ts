@@ -27,39 +27,6 @@ import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import { getTelemetryIdentity } from "./Identify.ts";
 import * as AnalyticsService from "./AnalyticsService.ts";
 
-interface RecordedBatchRequest {
-  readonly path: string;
-  readonly body: {
-    readonly batch?: ReadonlyArray<{
-      readonly event?: string;
-      readonly properties?: {
-        readonly index?: number;
-        readonly clientType?: string;
-        readonly serverOs?: string;
-        readonly serverArch?: string;
-        readonly serverAppVersion?: string;
-        readonly serverMode?: string;
-        readonly t3CodeVersion?: string;
-      };
-    }>;
-  } | null;
-}
-
-interface RecordedBatchBody {
-  readonly batch: ReadonlyArray<{
-    readonly event?: string;
-    readonly properties?: {
-      readonly index?: number;
-      readonly clientType?: string;
-      readonly serverOs?: string;
-      readonly serverArch?: string;
-      readonly serverAppVersion?: string;
-      readonly serverMode?: string;
-      readonly t3CodeVersion?: string;
-    };
-  }>;
-}
-
 const SentBatch = Schema.fromJsonString(
   Schema.Struct({
     batch: Schema.Array(
@@ -107,11 +74,9 @@ const failingFor = (minutes: number) => {
   return { respond, answers };
 };
 
-const recordTwentyEvents = Effect.gen(function* () {
+const recordFeedback = Effect.gen(function* () {
   const analytics = yield* AnalyticsService.AnalyticsService;
-  for (let index = 0; index < 20; index += 1) {
-    yield* analytics.record("test.retry", { index });
-  }
+  yield* analytics.record("test.retry", { index: 0 }, { anonymous: true });
 });
 
 const analyticsLayerWith = (
@@ -156,7 +121,7 @@ const sendFor = (
     void,
     never,
     AnalyticsService.AnalyticsService | Effect.Services<typeof getTelemetryIdentity>
-  > = recordTwentyEvents,
+  > = recordFeedback,
   policy?: ManagedPolicyDocument,
   telemetryEnv?: Parameters<typeof analyticsLayerWith>[2],
 ) =>
@@ -193,14 +158,14 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AnalyticsService
         respondWithStatus(204),
         Effect.gen(function* () {
           const analytics = yield* AnalyticsService.AnalyticsService;
-          yield* analytics.record("test.before-discovery");
+          yield* analytics.record("test.before-discovery", {}, { anonymous: true });
           yield* analytics.flush;
           env.T3CODE_TELEMETRY_ENABLED = "false";
           delete env.T3CODE_DESKTOP_SHELL_DISCOVERY_PENDING;
-          yield* analytics.record("test.opted-out");
+          yield* analytics.record("test.opted-out", {}, { anonymous: true });
           yield* analytics.flush;
           env.T3CODE_TELEMETRY_ENABLED = "true";
-          yield* analytics.record("test.allowed");
+          yield* analytics.record("test.allowed", {}, { anonymous: true });
           yield* analytics.flush;
         }),
       ).pipe(Effect.provideService(HostProcess.Environment, env));
@@ -211,7 +176,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AnalyticsService
     }),
   );
 
-  it.effect("sends only feedback the user sends unless product usage data is opted in", () =>
+  it.effect("sends only feedback the user sends, even with telemetry turned on", () =>
     Effect.gen(function* () {
       const recorded: Array<boolean> = [];
       const batches = yield* sendFor(
@@ -224,8 +189,6 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AnalyticsService
           recorded.push(yield* analytics.record("agent.feedback", {}, { anonymous: true }));
           yield* analytics.flush;
         }),
-        undefined,
-        {},
       ).pipe(Effect.provideService(HostProcess.Environment, {}));
       assert.deepEqual(recorded, [false, true]);
       assert.deepEqual(
@@ -243,10 +206,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AnalyticsService
         respondWithStatus(204),
         Effect.gen(function* () {
           const analytics = yield* AnalyticsService.AnalyticsService;
-          yield* analytics.record("test.do-not-track");
+          yield* analytics.record("test.do-not-track", {}, { anonymous: true });
           yield* analytics.flush;
           env.DO_NOT_TRACK = "0";
-          yield* analytics.record("test.allowed");
+          yield* analytics.record("test.allowed", {}, { anonymous: true });
           yield* analytics.flush;
         }),
       ).pipe(Effect.provideService(HostProcess.Environment, env));
@@ -257,53 +220,21 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AnalyticsService
     }),
   );
 
-  it.effect("sends an anonymous event under its own id and without the install id", () =>
+  it.effect("sends feedback under its own id and without the install id", () =>
     Effect.gen(function* () {
       const batches = yield* sendFor(
         0,
         respondWithStatus(204),
         Effect.gen(function* () {
           const analytics = yield* AnalyticsService.AnalyticsService;
-          yield* analytics.record("test.linked");
           yield* analytics.record("test.anonymous", {}, { anonymous: true });
           yield* analytics.flush;
         }),
       );
-      assert.equal(batches.length, 2);
-      const [linked, anonymous] = batches.map(([event]) => event);
-
-      assert.isDefined(linked?.properties.installId);
-      assert.isDefined(linked?.properties.serverOs);
+      const [anonymous] = batches.flat();
       assert.equal(anonymous?.distinct_id, anonymous?.uuid);
-      assert.notEqual(anonymous?.distinct_id, linked?.distinct_id);
       assert.isUndefined(anonymous?.properties.installId);
       assert.isUndefined(anonymous?.properties.serverOs);
-    }),
-  );
-
-  it.effect("client owner reports cannot use up the server's owner cap", () =>
-    Effect.gen(function* () {
-      const batches = yield* sendFor(
-        10,
-        respondWithStatus(204),
-        Effect.gen(function* () {
-          const analytics = yield* AnalyticsService.AnalyticsService;
-          yield* analytics.recordOwners(
-            Array.from({ length: 1_001 }, (_, index) => ({
-              source: "device" as const,
-              ownerId: index.toString(16).padStart(64, "0"),
-            })),
-            "client",
-          );
-          // The event buffer also holds 1,000, so send the client events first.
-          yield* analytics.flush;
-          yield* analytics.recordOwners([{ source: "connect", ownerId: "a".repeat(64) }], "server");
-        }),
-      );
-      const owners = batches.flat().map((event) => event.properties.observedBy);
-
-      assert.equal(owners.filter((observedBy) => observedBy === "client").length, 1_000);
-      assert.equal(owners.filter((observedBy) => observedBy === "server").length, 1);
     }),
   );
 
@@ -316,7 +247,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AnalyticsService
       assert.equal(statuses.filter((status) => status === 204).length, 1);
       const sentUuids = new Set(batches.map((batch) => batch.map(({ uuid }) => uuid).join()));
       assert.equal(sentUuids.size, 1);
-      assert.equal(batches[0]?.length, 20);
+      assert.equal(batches[0]?.length, 1);
     }),
   );
 
@@ -335,12 +266,12 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AnalyticsService
     () =>
       Effect.gen(function* () {
         const policy = { schemaVersion: 1, organization: "Example Corp" } as const;
-        const allowed = yield* sendFor(1, respondWithStatus(204), recordTwentyEvents, {
+        const allowed = yield* sendFor(1, respondWithStatus(204), recordFeedback, {
           ...policy,
           limits: { telemetry: true },
         });
         assert.equal(allowed.length, 1);
-        const denied = yield* sendFor(1, respondWithStatus(204), recordTwentyEvents, {
+        const denied = yield* sendFor(1, respondWithStatus(204), recordFeedback, {
           ...policy,
           limits: { telemetry: false },
         });
@@ -351,7 +282,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AnalyticsService
   it.effect("sends nothing on a CI runner unless the environment opts in", () =>
     Effect.gen(function* () {
       const onCi = (telemetryEnv: Parameters<typeof analyticsLayerWith>[2]) =>
-        sendFor(1, respondWithStatus(204), recordTwentyEvents, undefined, telemetryEnv).pipe(
+        sendFor(1, respondWithStatus(204), recordFeedback, undefined, telemetryEnv).pipe(
           Effect.provideService(HostProcess.Environment, { GITHUB_ACTIONS: "true" }),
         );
       assert.deepEqual(yield* onCi({}), []);
@@ -373,114 +304,11 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AnalyticsService
         analyticsLayerWith(HttpClient.make(() => Effect.never)),
         scope,
       );
-      yield* recordTwentyEvents.pipe(Effect.provide(context));
+      yield* recordFeedback.pipe(Effect.provide(context));
 
       const shutdown = yield* Scope.close(scope, Exit.void).pipe(Effect.forkChild);
       yield* TestClock.adjust("1 second");
       yield* Fiber.join(shutdown);
-    }),
-  );
-
-  it.effect("flush drains all buffered events across multiple batches", () =>
-    Effect.gen(function* () {
-      const capturedRequests: Array<RecordedBatchRequest> = [];
-      const layerServerConfig = ServerConfig.ServerConfig.layerTest(process.cwd(), {
-        prefix: "t3-telemetry-base-",
-      });
-
-      const layerTelemetry = AnalyticsService.layer.pipe(Layer.provideMerge(layerServerConfig));
-      const layerConfig = ConfigProvider.layer(
-        ConfigProvider.fromUnknown({
-          T3CODE_TELEMETRY_ENABLED: true,
-          T3CODE_TELEMETRY_KEY: "phc_test_key",
-          T3CODE_TELEMETRY_HOST: "http://localhost",
-          T3CODE_TELEMETRY_FLUSH_BATCH_SIZE: 20,
-        }),
-      );
-      const layerBatchServer = HttpServer.serve(
-        Effect.gen(function* () {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          if (request.method !== "POST") {
-            return HttpServerResponse.empty({ status: 404 });
-          }
-
-          const payload = yield* request.json.pipe(
-            Effect.map((body) => body as RecordedBatchRequest["body"]),
-            Effect.orElseSucceed(() => null),
-          );
-
-          capturedRequests.push({ path: request.url, body: payload });
-
-          return HttpServerResponse.jsonUnsafe({});
-        }),
-      );
-      const layerRuntime = layerTelemetry.pipe(
-        Layer.provide(layerConfig),
-        Layer.provide(
-          Layer.mergeAll(
-            Layer.succeed(HostProcess.Platform, "linux"),
-            Layer.succeed(HostProcess.Architecture, "arm64"),
-            ManagedPolicy.layerTest(),
-          ),
-        ),
-        Layer.provideMerge(NodeHttpServer.layerTest),
-      );
-
-      yield* Effect.gen(function* () {
-        yield* Layer.launch(layerBatchServer).pipe(Effect.forkScoped);
-        const { distinctId } = yield* getTelemetryIdentity;
-        assert.equal(distinctId !== null, true);
-        const analytics = yield* AnalyticsService.AnalyticsService;
-
-        for (let index = 0; index < 45; index += 1) {
-          yield* analytics.record("test.flush.drain", { index });
-        }
-
-        yield* analytics.flush;
-      }).pipe(Effect.provide(layerRuntime));
-
-      const batchRequests = capturedRequests.filter(
-        (request): request is RecordedBatchRequest & { readonly body: RecordedBatchBody } =>
-          Array.isArray(request.body?.batch),
-      );
-      assert.equal(batchRequests.length, 3);
-      assert.equal(
-        batchRequests.every(
-          (request) => request.path.endsWith("/batch/") || request.path.endsWith("/batch"),
-        ),
-        true,
-      );
-      const deliveredIndexes = batchRequests.flatMap((request) =>
-        request.body.batch
-          .filter((event) => event.event === "test.flush.drain")
-          .map((event) => event.properties?.index)
-          .filter((index): index is number => typeof index === "number"),
-      );
-
-      const sorted = deliveredIndexes.toSorted((a, b) => a - b);
-      assert.equal(sorted.length, 45);
-      assert.deepEqual(
-        sorted,
-        Array.from({ length: 45 }, (_, index) => index),
-      );
-      assert.equal(
-        batchRequests.every((request) =>
-          request.body.batch.every((event) => event.properties?.clientType === "cli-web-client"),
-        ),
-        true,
-      );
-      assert.equal(
-        batchRequests.every((request) =>
-          request.body.batch.every(
-            (event) =>
-              event.properties?.serverOs === "Linux" &&
-              event.properties.serverArch === "arm64" &&
-              event.properties.serverAppVersion === event.properties.t3CodeVersion &&
-              event.properties.serverMode === "web",
-          ),
-        ),
-        true,
-      );
     }),
   );
 
@@ -520,7 +348,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AnalyticsService
       yield* Effect.gen(function* () {
         yield* Layer.launch(layerBatchServer).pipe(Effect.forkScoped);
         const analytics = yield* AnalyticsService.AnalyticsService;
-        yield* analytics.record("test.disabled", { index: 1 });
+        yield* analytics.record("test.disabled", { index: 1 }, { anonymous: true });
         yield* analytics.flush;
       }).pipe(Effect.provide(layerRuntime));
 
