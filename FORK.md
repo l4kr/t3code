@@ -22,6 +22,9 @@ T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `
   web, a window the browser blocks (one an agent opens) falls back to the panel or floating player.
 - **Environment links don't expire**: a link to this machine stays valid until it is forgotten or
   revoked, however long it sits unused. Settings no longer shows an expiry date for one.
+- **Automatic updates**: the desktop app and the background service download a new release as
+  soon as it is out and install it once nothing on that machine is working and, on desktop, you
+  have stepped away. See [Updating](docs/user/updating.md#automatic-updates).
 - **No telemetry**. Nothing is sent to `ingest.t3.codes`: `AnalyticsService.layer` records nothing,
   whatever the environment says. Agent feedback is gone: the server keeps its mode off, so agents get
   no feedback tools or instructions, Labs no longer offers it, and `t3 feedback` is removed. T3
