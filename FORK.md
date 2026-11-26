@@ -14,6 +14,12 @@ T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `
 - **Branch cleanup**: when storage cleanup removes a settled thread's worktree, it also deletes the
   thread's branch if every commit is on the default branch or its pull request merged.
 - Windows only: Chromium smooth scrolling turned off.
+- **Browser and device windows**: a browser tab or a simulator opens in its own window instead of
+  the right panel or the floating player, and opening it again brings that window forward. The
+  panel keeps its tabs as launchers. Closing the window hands a browser tab back to the main window,
+  hidden, so agents keep using it; the page reloads when it moves. Annotations made there land in
+  the thread's composer in the main window, and _Send_ brings that thread forward to send. On the
+  web, a window the browser blocks (one an agent opens) falls back to the panel or floating player.
 - **No background telemetry**, and nothing you can see or use changes. Product usage events
   (`ingest.t3.codes`) go out only if you set `T3CODE_TELEMETRY_ENABLED=true` yourself; agent
   feedback you choose to send still goes. T3 Connect relay traces (Axiom) never export: the server,
@@ -72,8 +78,9 @@ the run stops where Claude would start, and the summary lists the files to merge
    re-signs with this fork's Developer ID, and notarizes and staples it.
 4. **publish**: writes `latest-mac.yml` and publishes everything with upstream's tag, title and notes.
 
-Electron, the desktop shell and native parts stay upstream's builds. A fork change to
-`apps/desktop` would not ship.
+The desktop app's main process (`apps/desktop/dist-electron`) is built from fork source and swapped
+in (`fork/desktop-dist.mjs`); Electron and native parts stay upstream's builds. The swap fails loudly
+if the fork's build lacks an entry upstream ships or loads a module the app doesn't ship.
 
 - Fork changes ship with the next upstream release. To get them now, run _Mirror upstream release_
   with _replace_ checked; an installed app on that version needs a manual reinstall.

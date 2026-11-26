@@ -94,6 +94,7 @@ import {
 import { isPreviewAnnotationPayload } from "./PickedElementPayload.ts";
 import { captureFavicon, safeHttpOrigin, selectFaviconCandidates } from "./FaviconCapture.ts";
 import { DEFAULT_RECORDING_INPUT_OPTIONS, type RecordingInputOptions } from "./RecordingInput.ts";
+import { isSurfaceWindowContents } from "../window/SurfaceWindows.ts";
 
 export type PreviewNavStatus =
   | { kind: "Idle" }
@@ -1906,7 +1907,9 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       !wc ||
       wc.isDestroyed() ||
       wc.getType() !== "webview" ||
-      (Option.isSome(mainWindow) && wc.hostWebContents !== mainWindow.value.webContents)
+      (Option.isSome(mainWindow) &&
+        wc.hostWebContents !== mainWindow.value.webContents &&
+        !isSurfaceWindowContents(wc.hostWebContents?.id ?? -1))
     ) {
       return yield* new PreviewWebContentsNotFoundError({ tabId, webContentsId });
     }

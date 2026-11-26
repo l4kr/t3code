@@ -38,5 +38,6 @@ done
 
 echo "== build"
 vp run --filter t3 build
+(cd apps/desktop && node scripts/build-preview-annotation-css.mjs && vp pack)
 echo "== telemetry"
 node "$here/telemetry-guard.mjs" --dist apps/server/dist

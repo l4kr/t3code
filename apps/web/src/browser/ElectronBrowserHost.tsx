@@ -29,6 +29,11 @@ import { readPreviewAnnotationTheme } from "./annotationTheme";
 import { useBrowserDefaults } from "./browserDefaults";
 import { useBrowserPointerStore } from "./browserPointerStore";
 import { HostedBrowserWebview } from "./HostedBrowserWebview";
+import {
+  hostsBrowserTab,
+  surfaceWindowRole,
+  useSurfaceWindowClaims,
+} from "~/surfaceWindows/surfaceWindowRegistry";
 import { openUrlInPreview } from "./openFileInPreview";
 import { rendersServerTabNatively } from "./previewRuntime";
 import { previewRuntimeTabId } from "./previewRuntimeTabId";
@@ -135,7 +140,11 @@ export function ElectronBrowserHost() {
   const previewByThreadKey = useActivePreviewSessions();
   const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
   useDesktopHostedPreviewSessions(primaryEnvironmentId);
-  const sessions = hostedBrowserSessions(previewByThreadKey, primaryEnvironmentId);
+  const claims = useSurfaceWindowClaims();
+  const sessions = hostedBrowserSessions(previewByThreadKey, primaryEnvironmentId).filter(
+    (session) =>
+      hostsBrowserTab(surfaceWindowRole(), claims, session.threadRef, session.snapshot.tabId),
+  );
 
   if (!isElectron) return null;
   return (

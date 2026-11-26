@@ -5,6 +5,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { readAsar, readAsarFile, replaceAsarFile, writeAsar } from "./asar.mjs";
+import { assertDesktopDist, swapDesktopDist } from "./desktop-dist.mjs";
 import { assertServerDist, swapServerDist } from "./server-dist.mjs";
 
 const MACH_O_MAGICS = new Set([
@@ -19,6 +20,7 @@ const tag = required("tag");
 const arch = required("arch");
 const [owner, repo] = required("repo").split("/");
 const serverDistSource = NodePath.resolve(required("server-dist"));
+const desktopDistSource = NodePath.resolve(required("desktop-dist"));
 const identity = required("identity");
 const keychain = args.keychain ?? null;
 const outDir = NodePath.resolve(required("out"));
@@ -57,6 +59,7 @@ const packageJson = JSON.parse(readAsarFile(asar, "package.json").toString("utf8
 delete packageJson.t3codeWebAuthn;
 replaceAsarFile(asar, "package.json", Buffer.from(JSON.stringify(packageJson, null, 2), "utf8"));
 swapServerDist(asar, serverDistSource, NodePath.join(workDir, "server-dist"));
+swapDesktopDist(asar, desktopDistSource, NodePath.join(workDir, "desktop-dist"));
 const headerHash = writeAsar(asarPath, asar);
 plistBuddy(infoPlist, `Set :ElectronAsarIntegrity:Resources/app.asar:hash ${headerHash}`);
 if (plistBuddy(infoPlist, "Print :ElectronAsarIntegrity:Resources/app.asar:hash") !== headerHash)
@@ -74,7 +77,7 @@ NodeFS.writeFileSync(
     "",
   ].join("\n"),
 );
-console.log(`Patched ${appName}: server, update feed, asar integrity ${headerHash}`);
+console.log(`Patched ${appName}: server, desktop, update feed, asar integrity ${headerHash}`);
 
 signables.forEach((item, index) => {
   const signArgs = ["--force", "--timestamp", "--options", "runtime", "--sign", identity];
@@ -125,6 +128,7 @@ run("xcrun", ["stapler", "staple", appPath]);
 run("spctl", ["--assess", "--type", "execute", "--verbose=2", appPath]);
 
 assertServerDist(readAsar(asarPath), serverDistSource);
+assertDesktopDist(readAsar(asarPath), desktopDistSource);
 const outZip = NodePath.join(outDir, `T3-Code-${version}-${arch}.zip`);
 run("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", appPath, outZip]);
 console.log(`OK: ${outZip}`);

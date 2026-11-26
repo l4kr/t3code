@@ -2,6 +2,8 @@ import * as NetAddress from "effect/net/NetAddress";
 import * as Result from "effect/Result";
 import type * as Electron from "electron";
 
+import { isSurfaceWindowContents } from "./SurfaceWindows.ts";
+
 // `*://` matches only http and https, so WebSocket schemes are listed separately.
 const REMOTE_REQUEST_URL_PATTERNS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
 
@@ -92,7 +94,11 @@ export function stripDesktopOriginHeaders(
   policy: MainWindowRequestHeaderPolicy,
   details: MainWindowRequestHeaderDetails,
 ): Record<string, string> | undefined {
-  if (details.webContentsId !== policy.mainWebContentsId) return undefined;
+  if (
+    details.webContentsId !== policy.mainWebContentsId &&
+    (details.webContentsId === undefined || !isSurfaceWindowContents(details.webContentsId))
+  )
+    return undefined;
   if (isSubframe(details)) return undefined;
   if (!hasExactDesktopOriginHeader(details.requestHeaders, policy.desktopOrigin)) {
     return undefined;

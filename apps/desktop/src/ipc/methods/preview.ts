@@ -49,6 +49,7 @@ import * as DesktopClientSettings from "../../settings/DesktopClientSettings.ts"
 import { PREVIEW_WEBVIEW_PREFERENCES } from "../../preview/WebviewPreferences.ts";
 import * as IpcChannels from "../channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
+import { tabOwners } from "../../preview/TabOwners.ts";
 
 export const installPreviewEventForwarding = Effect.fn(
   "desktop.ipc.preview.installEventForwarding",
@@ -90,12 +91,11 @@ const createTab = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_CREATE_TAB_CHANNEL,
   payload: DesktopPreviewCreateTabInputSchema,
   result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.preview.createTab")(function* ({
-    tabId,
-    zoomFactor,
-    colorScheme,
-    serverTab,
-  }) {
+  handler: Effect.fn("desktop.ipc.preview.createTab")(function* (
+    { tabId, zoomFactor, colorScheme, serverTab },
+    event,
+  ) {
+    if (event) tabOwners.add(tabId, event.sender.id);
     const manager = yield* PreviewManager.PreviewManager;
     yield* manager.createTab(tabId, { zoomFactor, colorScheme, serverTab });
   }),
@@ -105,7 +105,8 @@ const closeTab = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_CLOSE_TAB_CHANNEL,
   payload: DesktopPreviewTabInputSchema,
   result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.preview.closeTab")(function* ({ tabId }) {
+  handler: Effect.fn("desktop.ipc.preview.closeTab")(function* ({ tabId }, event) {
+    if (event && !tabOwners.release(tabId, event.sender.id)) return;
     const manager = yield* PreviewManager.PreviewManager;
     yield* manager.closeTab(tabId);
   }),

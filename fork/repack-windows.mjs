@@ -6,6 +6,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { readAsar, readAsarFile, replaceAsarFile, writeAsar } from "./asar.mjs";
+import { assertDesktopDist, swapDesktopDist } from "./desktop-dist.mjs";
 import { assertServerDist, swapServerDist } from "./server-dist.mjs";
 
 const UPSTREAM = "pingdotgg/t3code";
@@ -19,6 +20,7 @@ const tag = required("tag");
 const [owner, repo] = required("repo").split("/");
 const outDir = NodePath.resolve(required("out"));
 const serverDistSource = args["server-dist"] ? NodePath.resolve(args["server-dist"]) : null;
+const desktopDistSource = args["desktop-dist"] ? NodePath.resolve(args["desktop-dist"]) : null;
 const workDir = NodePath.resolve(
   args.work ?? NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-repack-")),
 );
@@ -49,11 +51,15 @@ const appPackage = JSON.parse(readAsarFile(asar, "package.json").toString("utf8"
 const version = appPackage.version;
 if (`v${version}` !== tag) throw new Error(`Installer is ${version}, expected ${tag}`);
 
+if (desktopDistSource) {
+  swapDesktopDist(asar, desktopDistSource, NodePath.join(workDir, "desktop-dist"));
+  console.log(`Replaced apps/desktop/dist-electron with ${desktopDistSource}`);
+}
 const entry = readAsarFile(asar, appPackage.main).toString("utf8");
 if (!entry.includes(PATCH_MARKER)) {
   replaceAsarFile(asar, appPackage.main, Buffer.from(PATCH_LINE + entry, "utf8"));
-  writeAsar(asarPath, asar);
 }
+writeAsar(asarPath, asar);
 const patched = readAsarFile(readAsar(asarPath), appPackage.main).toString("utf8");
 if (!patched.startsWith(PATCH_LINE)) throw new Error("Entry patch did not stick");
 console.log(`Patched ${appPackage.main}`);
@@ -194,10 +200,9 @@ run(sevenZip, [
   "resources/server.asar",
   "resources/app-update.yml",
 ]);
-const builtEntry = readAsarFile(
-  readAsar(NodePath.join(verifyDir, "resources", "app.asar")),
-  appPackage.main,
-).toString("utf8");
+const builtApp = readAsar(NodePath.join(verifyDir, "resources", "app.asar"));
+const builtEntry = readAsarFile(builtApp, appPackage.main).toString("utf8");
+if (desktopDistSource) assertDesktopDist(builtApp, desktopDistSource);
 const builtFeed = NodeFS.readFileSync(
   NodePath.join(verifyDir, "resources", "app-update.yml"),
   "utf8",

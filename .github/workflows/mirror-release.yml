@@ -160,8 +160,10 @@ jobs:
 
       - name: Setup dependencies
         uses: ./.github/actions/setup-ci-deps
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
         with:
-          install-args: --filter=t3... --filter=@t3tools/web... --filter=@t3tools/scripts...
+          install-args: --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
 
       - name: Typecheck Claude's resolution
         if: steps.apply.outputs.claude == 'true'
@@ -175,12 +177,27 @@ jobs:
       - name: Refuse to ship telemetry
         run: node "$RUNNER_TEMP/fork-tools/telemetry-guard.mjs" --dist apps/server/dist
 
+      - name: Build desktop main process
+        working-directory: apps/desktop
+        run: |
+          node scripts/build-preview-annotation-css.mjs
+          T3CODE_CLERK_PUBLISHABLE_KEY="$VITE_CLERK_PUBLISHABLE_KEY" vp pack
+
       - uses: actions/upload-artifact@v4
         with:
           name: server-dist
           path: |
             apps/server/dist
             !apps/server/dist/**/*.map
+          if-no-files-found: error
+          retention-days: 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-dist
+          path: |
+            apps/desktop/dist-electron
+            !apps/desktop/dist-electron/**/*.map
           if-no-files-found: error
           retention-days: 1
 
@@ -204,6 +221,11 @@ jobs:
           name: server-dist
           path: ${{ runner.temp }}/server-dist
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-dist
+          path: ${{ runner.temp }}/desktop-dist
+
       - name: Download upstream installer
         run: >
           gh release download "$TAG" --repo "$UPSTREAM"
@@ -220,6 +242,7 @@ jobs:
           --tag "$TAG"
           --repo "$GITHUB_REPOSITORY"
           --server-dist "$RUNNER_TEMP/server-dist"
+          --desktop-dist "$RUNNER_TEMP/desktop-dist"
           --out "$RUNNER_TEMP/out"
           --work "$RUNNER_TEMP/work"
           --7z "$SEVEN_ZIP"
@@ -253,6 +276,11 @@ jobs:
         with:
           name: server-dist
           path: ${{ runner.temp }}/server-dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-dist
+          path: ${{ runner.temp }}/desktop-dist
 
       - name: Download upstream app
         run: >
@@ -298,6 +326,7 @@ jobs:
           --tag "$TAG"
           --repo "$GITHUB_REPOSITORY"
           --server-dist "$RUNNER_TEMP/server-dist"
+          --desktop-dist "$RUNNER_TEMP/desktop-dist"
           --identity "${{ steps.cert.outputs.identity }}"
           --keychain "${{ steps.cert.outputs.keychain }}"
           --out "$RUNNER_TEMP/out"

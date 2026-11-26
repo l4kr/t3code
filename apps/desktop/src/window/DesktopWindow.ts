@@ -26,6 +26,8 @@ import { makeComponentLogger } from "../app/DesktopObservability.ts";
 import * as DesktopState from "../app/DesktopState.ts";
 import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import { getDesktopOrigin, getDesktopUrl } from "../electron/ElectronProtocol.ts";
+import { tabOwners } from "../preview/TabOwners.ts";
+import * as SurfaceWindows from "./SurfaceWindows.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
@@ -785,10 +787,35 @@ export const make = Effect.gen(function* () {
       installContextMenu(window, contents, true);
       void runPromise(previewManager.prepareWebview(contents));
     });
+    window.webContents.on("did-create-window", (child, { url }) => {
+      SurfaceWindows.adoptSurfaceWindow(window, child, {
+        url,
+        applicationUrl,
+        onClosed: (contentsId) => {
+          for (const tabId of tabOwners.releaseWindow(contentsId)) {
+            void runPromise(previewManager.closeTab(tabId).pipe(Effect.ignore));
+          }
+        },
+      });
+    });
 
     // Popups from every frame in this window arrive here without a caller, so only web links
     // pass. The app opens editors and other applications over IPC.
-    window.webContents.setWindowOpenHandler(({ url }) => {
+    window.webContents.setWindowOpenHandler((details) => {
+      const surfaceWindow = SurfaceWindows.surfaceWindowOpenResponse(details, {
+        applicationUrl,
+        backgroundColor: getInitialWindowBackgroundColor(shouldUseDarkColors),
+        webPreferences: {
+          preload: environment.preloadPath,
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true,
+          webviewTag: true,
+          disableHtmlFullscreenWindowResize: true,
+        },
+      });
+      if (surfaceWindow) return surfaceWindow;
+      const { url } = details;
       if (Option.isSome(ElectronShell.parseWebExternalUrl(url))) {
         void runPromise(electronShell.openExternal(url));
       }

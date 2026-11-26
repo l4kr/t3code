@@ -6,6 +6,7 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
+import { isSurfaceWindowSender } from "../window/SurfaceWindows.ts";
 
 export interface DesktopIpcInvokeEvent {
   readonly sender: { readonly id: number };
@@ -188,9 +189,10 @@ export const layer = (ipcMain: DesktopIpcMain) =>
         Effect.map(
           electronWindow.main,
           (main) =>
-            Option.isSome(main) &&
-            main.value.webContents.id === event.sender.id &&
-            main.value.webContents.mainFrame === event.senderFrame,
+            (Option.isSome(main) &&
+              main.value.webContents.id === event.sender.id &&
+              main.value.webContents.mainFrame === event.senderFrame) ||
+            isSurfaceWindowSender(event),
         ),
       );
     }),
