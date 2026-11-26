@@ -14,15 +14,13 @@ T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `
 - **Branch cleanup**: when storage cleanup removes a settled thread's worktree, it also deletes the
   thread's branch if every commit is on the default branch or its pull request merged.
 - Windows only: Chromium smooth scrolling turned off.
-- **No telemetry**: product analytics (`ingest.t3.codes`), agent feedback reports, and T3 Connect
-  relay traces (Axiom) are cut where they would leave the process: `AnalyticsService.layer` records
-  nothing and `RelayTracing.layer` never exports, whatever the environment says. The server, the web
-  client, the desktop window and the mobile app all go through those two. Clerk, which signs in to
-  T3 Connect, gets `telemetry={false}` at every `<ClerkProvider>`. Mobile crash reports never
-  dispatch and its Diagnostics switches are hidden, though mobile only changes if you build it
-  yourself; the store apps are upstream's. Your own OpenTelemetry export in
-  _Settings > Maintenance > Diagnostics_ still works. Using T3 Connect still means talking to
-  upstream's relay, which keeps its own server-side logs.
+- **No background telemetry**, and nothing you can see or use changes. Product usage events
+  (`ingest.t3.codes`) go out only if you set `T3CODE_TELEMETRY_ENABLED=true` yourself; agent
+  feedback you choose to send still goes. T3 Connect relay traces (Axiom) never export: the server,
+  web client, desktop window and mobile app all go through `RelayTracing.layer`. Clerk, which signs
+  in to T3 Connect, gets `telemetry={false}` at every `<ClerkProvider>`. Mobile crash reports never
+  dispatch; the mobile switches stay but send nothing, and mobile only changes if you build it
+  yourself. Using T3 Connect still means talking to upstream's relay, which keeps its own logs.
 
 ## Source sync
 

@@ -29,20 +29,20 @@ fixture() {
   echo '{"name":"@t3tools/relay","dependencies":{"@axiomhq/js":"1"}}' > "$dir/infra/relay/package.json"
   echo '{"name":"@t3tools/shared","dependencies":{"@opentelemetry/api":"1"}}' > "$dir/packages/shared/package.json"
   echo 'const relay = "/v1/mobile/observe/:projectId";' > "$dir/apps/server/dist/bin.mjs"
-  echo '//# sourceMappingURL=bin.mjs.map https://ingest.t3.codes' > "$dir/apps/server/dist/bin.mjs.map"
+  echo '//# sourceMappingURL=bin.mjs.map https://o1.ingest.sentry.io' > "$dir/apps/server/dist/bin.mjs.map"
   echo "$dir"
 }
 
 dir="$(fixture)"
 check "clean build and allowed dependencies pass" 0 "No telemetry" "$dir"
 
-echo 'fetch("https://ingest.t3.codes/batch", { body })' > "$dir/apps/server/dist/telemetry.mjs"
-check "an ingest endpoint in the server bundle fails" 1 "telemetry\.mjs.*ingest\.t3\.codes" "$dir"
+echo 'fetch("https://o1.ingest.sentry.io/api/1/envelope", { body })' > "$dir/apps/server/dist/telemetry.mjs"
+check "an error-reporting endpoint in the server bundle fails" 1 "telemetry\.mjs.*sentry\.io" "$dir"
 rm -rf "$dir"
 
 dir="$(fixture)"
-echo 'const key="phc_XOWci4oZP4VvLiEyrFqkFjP4CZn55mjYYBMREK5Wd6m";' > "$dir/apps/server/dist/client/assets/index.js"
-check "an analytics key in the web client fails" 1 "index\.js.*phc_" "$dir"
+echo 'posthog.init(key, { api_host: "https://us.i.posthog.com" })' > "$dir/apps/server/dist/client/assets/index.js"
+check "an analytics host in the web client fails" 1 "index\.js.*posthog\.com" "$dir"
 rm -rf "$dir"
 
 dir="$(fixture)"

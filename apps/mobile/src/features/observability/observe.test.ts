@@ -14,11 +14,11 @@ vi.mock("expo-constants", () => ({
   },
 }));
 
-it("never dispatches crash reports, even with a relay configured and the setting on", async () => {
+it("keeps the setting but never dispatches crash reports, even with it on", async () => {
   const { crashReportingAvailable, setCrashReportsEnabled } = await import("./observe");
   await setCrashReportsEnabled(true);
 
-  expect(crashReportingAvailable).toBe(false);
+  expect(crashReportingAvailable).toBe(true);
   expect(observe.dispatchEvents).not.toHaveBeenCalled();
   expect(observe.configure).toHaveBeenCalled();
   for (const [options] of observe.configure.mock.calls) {
