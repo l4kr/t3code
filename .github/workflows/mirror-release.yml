@@ -169,6 +169,10 @@ jobs:
         with:
           install-args: --filter=t3... --filter=@t3tools/scripts...
 
+      - name: Put Vite+ on the Windows PATH
+        if: matrix.platform == 'win'
+        run: cygpath -w "$HOME/.vite-plus/bin" >> "$GITHUB_PATH"
+
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build resource monitor
