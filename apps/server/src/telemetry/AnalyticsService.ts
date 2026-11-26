@@ -4,6 +4,31 @@ import * as Layer from "effect/Layer";
 
 import type { TelemetryOwner } from "./Identify.ts";
 
+// Users name or import their own distros, so only well-known families are reported.
+const WSL_DISTRO_FAMILIES = [
+  ["ubuntu", "Ubuntu"],
+  ["debian", "Debian"],
+  ["kali", "Kali"],
+  ["opensuse", "openSUSE"],
+  ["suse", "SUSE"],
+  ["sles", "SUSE"],
+  ["oraclelinux", "OracleLinux"],
+  ["almalinux", "AlmaLinux"],
+  ["rockylinux", "RockyLinux"],
+  ["fedora", "Fedora"],
+  ["archlinux", "Arch"],
+  ["alpine", "Alpine"],
+  ["nixos", "NixOS"],
+  ["pengwin", "Pengwin"],
+  ["docker-desktop", "docker-desktop"],
+] as const;
+
+export const wslDistroFamily = (distroName: string): string | undefined => {
+  const name = distroName.trim().toLowerCase();
+  if (name === "") return undefined;
+  return WSL_DISTRO_FAMILIES.find(([prefix]) => name.startsWith(prefix))?.[1] ?? "other";
+};
+
 export class AnalyticsService extends Context.Service<
   AnalyticsService,
   {
