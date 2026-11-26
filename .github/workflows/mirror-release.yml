@@ -134,6 +134,69 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  cli:
+    needs: [pick, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest, platform: linux, arch: x64, key: linux-x64 }
+          - { runner: ubuntu-24.04-arm, platform: linux, arch: arm64, key: linux-arm64 }
+          - { runner: macos-latest, platform: mac, arch: arm64, key: darwin-arm64 }
+          - { runner: windows-latest, platform: win, arch: x64, key: win32-x64 }
+          - { runner: windows-11-arm, platform: win, arch: arm64, key: win32-arm64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.pick.outputs.version }}
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-dist
+          path: apps/server/dist
+
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=t3... --filter=@t3tools/scripts...
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build resource monitor
+        run: |
+          cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml
+          mkdir -p "$RUNNER_TEMP/resource-monitor/${{ matrix.key }}"
+          cp native/resource-monitor/target/release/t3-resource-monitor* "$RUNNER_TEMP/resource-monitor/${{ matrix.key }}/"
+          rm -f "$RUNNER_TEMP/resource-monitor/${{ matrix.key }}/"*.d "$RUNNER_TEMP/resource-monitor/${{ matrix.key }}/"*.pdb
+
+      - name: Install patchelf
+        if: matrix.platform == 'linux'
+        run: command -v patchelf || { sudo apt-get update && sudo apt-get install -y patchelf; }
+
+      - name: Build CLI archive
+        run: |
+          node apps/server/scripts/cli.ts build-exe --verbose
+          node scripts/build-cli-archive.ts --platform "${{ matrix.platform }}" --arch "${{ matrix.arch }}" \
+            --version "$VERSION" --resource-monitor-dir "$RUNNER_TEMP/resource-monitor" --output-dir release-cli
+
+      - name: Smoke-test CLI archive
+        run: node scripts/smoke-cli-archive.ts --archive release-cli/* --expect-version "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-cli-${{ matrix.key }}
+          path: release-cli/*
+          if-no-files-found: error
+          retention-days: 1
+
   windows:
     needs: [pick, build]
     runs-on: windows-latest
@@ -281,8 +344,8 @@ jobs:
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
 
   publish:
-    needs: [pick, build, windows, macos]
-    if: ${{ !cancelled() && needs.windows.result == 'success' }}
+    needs: [pick, build, cli, windows, macos]
+    if: ${{ !cancelled() && needs.windows.result == 'success' && needs.cli.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -299,6 +362,12 @@ jobs:
           pattern: release-*
           path: release
           merge-multiple: true
+
+      - name: Write CLI archive checksums
+        run: |
+          cd release
+          sha256sum t3-*.tar.gz t3-*.zip > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Write the macOS update feed
         run: node fork/mac-update-feed.mjs --version "$VERSION" --dir release

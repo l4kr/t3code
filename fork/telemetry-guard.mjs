@@ -4,6 +4,8 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 const DESTINATIONS = [
+  /ingest\.t3\.codes/,
+  /\bphc_[A-Za-z0-9]{20,}/,
   /axiom\.co\b/,
   /X-Axiom-Dataset/i,
   /sentry\.io\b/,

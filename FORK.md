@@ -20,13 +20,15 @@ T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `
   hidden, so agents keep using it; the page reloads when it moves. Annotations made there land in
   the thread's composer in the main window, and _Send_ brings that thread forward to send. On the
   web, a window the browser blocks (one an agent opens) falls back to the panel or floating player.
-- **No telemetry**. Product usage events never leave the app, whatever the environment says;
-  agent feedback you choose to send still goes. T3 Connect relay traces (Axiom) never export: the
-  server, web client, desktop window and mobile app all go through `RelayTracing.layer`. Clerk,
-  which signs in to T3 Connect, gets `telemetry={false}` at every `<ClerkProvider>`. Mobile crash
-  reports never dispatch; the mobile switches stay but send nothing, and mobile only changes if you
-  build it yourself. The usage-data notices on the Welcome page and in Settings are gone. Using T3
-  Connect still means talking to upstream's relay, which keeps its own logs.
+- **No telemetry**. Nothing is sent to `ingest.t3.codes`: `AnalyticsService.layer` records nothing,
+  whatever the environment says. Agent feedback is gone: the server keeps its mode off, so agents get
+  no feedback tools or instructions, Labs no longer offers it, and `t3 feedback` is removed. T3
+  Connect relay traces (Axiom) never export: the server, web client, desktop window and mobile app
+  all go through `RelayTracing.layer`. Clerk, which signs in to T3 Connect, gets `telemetry={false}`
+  at every `<ClerkProvider>`. Mobile crash reports never dispatch; the mobile switches stay but send
+  nothing, and mobile only changes if you build it yourself. The usage-data notices on the Welcome
+  page and in Settings are gone. Using T3 Connect still means talking to upstream's relay, which
+  keeps its own logs.
 
 ## Releases
 
@@ -57,8 +59,12 @@ update themselves from this repo's releases. Each step runs only if the one befo
    - **macos** (arm64 and x64): repacks upstream's app (`fork/repack-macos.mjs`) the same way,
      updates the asar integrity hash, drops the passkey entitlements tied to upstream's Apple team,
      re-signs with this fork's Developer ID, and notarizes and staples it.
-   - **publish**: writes `latest-mac.yml` and publishes everything with upstream's tag, title and
-     notes.
+   - **cli** (linux x64 and arm64, macOS arm64, Windows x64 and arm64, each on its own runner):
+     builds the standalone `t3` runtime that `t3 serve`, the background service and SSH installs
+     use, with upstream's `scripts/build-cli-archive.ts`, and smoke-tests it. `t3 update` and SSH
+     installs download from this repo's releases.
+   - **publish**: writes `latest-mac.yml` and `SHA256SUMS` and publishes everything with upstream's
+     tag, title and notes.
 
 The merge commit body and run summary list each file each step settled. A failed run leaves `main`
 and the last release as they were, and GitHub emails the failure.

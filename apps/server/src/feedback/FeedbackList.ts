@@ -19,7 +19,7 @@ const decodeTrace = Schema.decodeUnknownEffect(Schema.NullOr(Schema.fromJsonStri
  * The most recent reports in this database, newest first, exactly as stored. A database from
  * before agent feedback has no table yet, and so no reports.
  */
-export const readFeedbackReports = Effect.gen(function* () {
+const readFeedbackReports = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const [table] = yield* sql<{ readonly count: number }>`
     SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'table' AND name = 'agent_feedback'`.pipe(

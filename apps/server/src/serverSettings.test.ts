@@ -150,6 +150,14 @@ function strictSecretReferencePaths(
 }
 
 it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings", (it) => {
+  it.effect("keeps agent feedback off, whatever was saved", () =>
+    Effect.gen(function* () {
+      const service = yield* ServerSettingsModule.ServerSettingsService;
+      yield* service.updateSettings({ agentFeedback: { mode: "auto" } });
+      assert.equal((yield* service.getSettings).agentFeedback.mode, "off");
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
   it.effect("serializes concurrent model preference edits without cancelling duplicate adds", () =>
     Effect.gen(function* () {
       const service = yield* ServerSettingsModule.ServerSettingsService;

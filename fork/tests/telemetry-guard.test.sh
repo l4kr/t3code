@@ -46,6 +46,16 @@ check "an analytics host in the web client fails" 1 "index\.js.*posthog\.com" "$
 rm -rf "$dir"
 
 dir="$(fixture)"
+echo 'fetch("https://ingest.t3.codes/batch", { body })' > "$dir/apps/server/dist/telemetry.mjs"
+check "the T3 ingest endpoint in the server bundle fails" 1 "telemetry\.mjs.*ingest\.t3\.codes" "$dir"
+rm -rf "$dir"
+
+dir="$(fixture)"
+echo 'const key="phc_XOWci4oZP4VvLiEyrFqkFjP4CZn55mjYYBMREK5Wd6m";' > "$dir/apps/server/dist/client/assets/index.js"
+check "an analytics key in the web client fails" 1 "index\.js.*phc_" "$dir"
+rm -rf "$dir"
+
+dir="$(fixture)"
 echo 'headers:{"X-Axiom-Dataset":d}' > "$dir/apps/server/dist/client/assets/index.js"
 check "an Axiom exporter in the web client fails" 1 "X-Axiom-Dataset" "$dir"
 rm -rf "$dir"
