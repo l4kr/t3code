@@ -98,6 +98,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.serverGetHostResources]: "server",
   [WS_METHODS.serverGetProcessResourceHistory]: "server",
   [WS_METHODS.serverGetResourceTelemetryHistory]: "server",
+  [WS_METHODS.serverGetMachineActivity]: "server",
+  [WS_METHODS.serverStopMachineDevice]: "device",
   [WS_METHODS.serverRetryResourceTelemetry]: "server",
   [WS_METHODS.serverCheckOtlpEndpoint]: "server",
   [WS_METHODS.serverListTextGeneratorModels]: "server",

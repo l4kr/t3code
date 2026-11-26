@@ -369,6 +369,11 @@ import {
   DeviceShutdownInput,
 } from "./device.ts";
 import {
+  MachineActivity,
+  MachineActivityError,
+  MachineActivityStopDeviceInput,
+} from "./machineActivity.ts";
+import {
   ServerConfigStreamEvent,
   DesktopUpdateCommitInput,
   OtlpEndpointCheckInput,
@@ -634,6 +639,8 @@ export const WS_METHODS = {
   serverGetHostResources: "server.getHostResources",
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverGetResourceTelemetryHistory: "server.getResourceTelemetryHistory",
+  serverGetMachineActivity: "server.getMachineActivity",
+  serverStopMachineDevice: "server.stopMachineDevice",
   serverRetryResourceTelemetry: "server.retryResourceTelemetry",
   serverCheckOtlpEndpoint: "server.checkOtlpEndpoint",
   serverListTextGeneratorModels: "server.listTextGeneratorModels",
@@ -1166,6 +1173,17 @@ const WsServerGetResourceTelemetryHistoryRpc = Rpc.make(
     error: EnvironmentAuthorizationError,
   },
 );
+
+const WsServerGetMachineActivityRpc = Rpc.make(WS_METHODS.serverGetMachineActivity, {
+  payload: Schema.Struct({}),
+  success: MachineActivity,
+  error: Schema.Union([MachineActivityError, EnvironmentAuthorizationError]),
+});
+
+const WsServerStopMachineDeviceRpc = Rpc.make(WS_METHODS.serverStopMachineDevice, {
+  payload: MachineActivityStopDeviceInput,
+  error: Schema.Union([MachineActivityError, EnvironmentAuthorizationError]),
+});
 
 const WsServerRetryResourceTelemetryRpc = Rpc.make(WS_METHODS.serverRetryResourceTelemetry, {
   payload: Schema.Struct({}),
@@ -2572,6 +2590,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetHostResourcesRpc,
   WsServerGetProcessResourceHistoryRpc,
   WsServerGetResourceTelemetryHistoryRpc,
+  WsServerGetMachineActivityRpc,
+  WsServerStopMachineDeviceRpc,
   WsServerRetryResourceTelemetryRpc,
   WsServerCheckOtlpEndpointRpc,
   WsServerListTextGeneratorModelsRpc,

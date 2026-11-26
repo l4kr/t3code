@@ -27,6 +27,13 @@ here must appear there. In detail:
 - **Automatic updates**: the desktop app and the background service download a new release as
   soon as it is out and install it once nothing on that machine is working and, on desktop, you
   have stepped away. See [Updating](docs/user/updating.md#automatic-updates).
+- **Activity at a glance**: a row per connected machine at the bottom of the sidebar shows how much
+  of that machine T3 Code is using: CPU as a share of the whole machine and memory, for the
+  server's process tree (agents, terminals and what they start) plus every booted simulator and
+  emulator. Clicking it lists the busiest processes by name and each simulator or emulator with
+  its own CPU and memory and _Stop_. `MachineActivity` samples the tree through
+  `ResourceTelemetry` and finds devices itself (`launchd_sim` per UDID, `qemu-system-*` per AVD);
+  _Stop_ only acts on a device it finds running.
 - **No telemetry**. Nothing is sent to `ingest.t3.codes`: `AnalyticsService.layer` records nothing,
   whatever the environment says. Agent feedback is gone: the server keeps its mode off, so agents get
   no feedback tools or instructions, Labs no longer offers it, and `t3 feedback` is removed. T3

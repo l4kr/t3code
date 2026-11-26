@@ -135,6 +135,7 @@ import * as RelayClient from "@t3tools/shared/relayClient";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
+import * as MachineActivity from "./activity/MachineActivity.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
 import * as Workflows from "./workflows/Workflows.ts";
@@ -891,6 +892,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(RelayClient.RelayClient)({}),
   Layer.mock(RepositoryIdentityResolver.RepositoryIdentityResolver)({}),
   Layer.mock(ResourceTelemetry.ResourceTelemetry)({}),
+  Layer.mock(MachineActivity.MachineActivity)({}),
   Layer.mock(ReviewService.ReviewService)({}),
   Layer.mock(ScheduledTasks.ScheduledTaskService)({}),
   Workflows.layerDisabled,

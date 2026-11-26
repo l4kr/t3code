@@ -37,6 +37,7 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
 import * as KeepAwake from "./background/KeepAwake.ts";
 import * as AutoUpdate from "./autoUpdate/AutoUpdate.ts";
+import * as MachineActivity from "./activity/MachineActivity.ts";
 import * as ServerConfig from "./config.ts";
 import { withRootRequestSpans, withUntracedRequests } from "./http.ts";
 import * as ServerHttp from "./http.ts";
@@ -748,6 +749,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ),
   layerThreadPullRequestWorker,
   KeepAwake.layer,
+  MachineActivity.layer.pipe(Layer.provide(layerResourceDiagnostics)),
   DelegatedTaskAnalytics.layer,
   Layer.effectDiscard(
     Effect.gen(function* () {

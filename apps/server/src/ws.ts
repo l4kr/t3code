@@ -261,6 +261,7 @@ import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/Rpc
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
+import * as MachineActivity from "./activity/MachineActivity.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { commandFeatureUsage, featureUsage } from "./telemetry/FeatureUsage.ts";
@@ -1638,6 +1639,7 @@ export const layerWsRpc = (
       const hostResources = yield* HostResources.HostResources;
       const processResourceMonitor = yield* ProcessResourceMonitor.ProcessResourceMonitor;
       const resourceTelemetry = yield* ResourceTelemetry.ResourceTelemetry;
+      const machineActivity = yield* MachineActivity.MachineActivity;
       const relayClient = yield* RelayClient.RelayClient;
       // Webhook URLs start agents; expose them only to operate-scoped sessions while keeping tasks readable.
       const withVisibleWebhookUrls = (result: ScheduledTaskListResult): ScheduledTaskListResult =>
@@ -2889,6 +2891,8 @@ export const layerWsRpc = (
         [WS_METHODS.serverGetUsageSummary]: (input) => usage.readSummary(input),
         [WS_METHODS.serverRefreshUsageRates]: (_input) => usage.refreshRates,
         [WS_METHODS.serverRetryResourceTelemetry]: (_input) => resourceTelemetry.retry,
+        [WS_METHODS.serverGetMachineActivity]: (_input) => machineActivity.snapshot,
+        [WS_METHODS.serverStopMachineDevice]: (input) => machineActivity.stopDevice(input),
         [WS_METHODS.serverCheckOtlpEndpoint]: (input) => otlpEndpointCheck.check(input),
         [WS_METHODS.serverListTextGeneratorModels]: (input) => textGenerators.listModels(input),
         [WS_METHODS.serverPrepareTriage]: (input) => triage.prepare(input),

@@ -303,6 +303,10 @@
       "types": "./src/state/device.ts",
       "default": "./src/state/device.ts"
     },
+    "./state/machineActivity": {
+      "types": "./src/state/machineActivity.ts",
+      "default": "./src/state/machineActivity.ts"
+    },
     "./state/deviceHubAccess": {
       "types": "./src/state/deviceHubAccess.ts",
       "default": "./src/state/deviceHubAccess.ts"

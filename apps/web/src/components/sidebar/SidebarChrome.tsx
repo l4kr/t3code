@@ -39,6 +39,7 @@ import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
+import { SidebarMachineActivity } from "./SidebarMachineActivity";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { observeResize } from "~/lib/observeResize";
 import { SharedTooltipTrigger } from "../ui/shared-tooltip";
@@ -317,6 +318,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     <SidebarFooter>
       <SidebarProviderUpdatePill />
       <SidebarUpdateArchitectureWarning />
+      <SidebarMachineActivity />
       <SidebarUtilityMenu />
     </SidebarFooter>
   );

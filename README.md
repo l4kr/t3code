@@ -34,6 +34,7 @@ This is [l4kr/t3code](https://github.com/l4kr/t3code), a fork that tracks each s
 - **No telemetry.** Nothing goes to T3 Code's analytics or to the Axiom traces of T3 Connect, Clerk sign-in has its own telemetry off, the mobile app never sends crash reports, and the usage-data notices are gone. T3 Connect itself still runs through T3 Code's relay.
 - **No agent feedback.** Agents get no feedback tools or instructions, Labs no longer offers it, and `t3 feedback` is gone.
 - **Automatic updates.** The desktop app and the background service install each new release without asking, once nothing on that machine is working: no thread running or waiting on you, no workflow step or scheduled task in progress, no terminal command running. The desktop app also waits until you have been away for five minutes or locked the screen.
+- **Activity at a glance.** The bottom of the sidebar shows, for each connected machine, how much CPU and memory T3 Code's agents, terminals, builds and simulators are using. Click it to see the busiest processes and every open simulator or emulator, with Stop.
 - **Environment links don't expire.** A link to another machine stays valid until you forget or revoke it, however long it sits unused.
 - **Browser and device windows.** A browser tab or a simulator opens in its own window instead of the right panel or the floating player.
 - **Skills** in thread details. Pin skills as one-click rows, start one in the background, and give it an icon.
