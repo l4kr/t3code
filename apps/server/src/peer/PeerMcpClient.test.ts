@@ -277,19 +277,19 @@ it.effect("keeps the expiry the peer answers with, so a used link outlives its f
         Effect.map((sessions) => sessions[0]?.expiresAt.epochMilliseconds),
       );
       const linkedAt = linked.linkedAt.epochMilliseconds;
-      expect(yield* storedExpiry).toBe(linkedAt + 30 * day);
+      expect(yield* storedExpiry).toBe(linkedAt + 36_500 * day);
 
       yield* TestClock.adjust("20 days");
       yield* call;
-      expect(yield* expiryThere).toBe(linkedAt + 50 * day);
-      expect(yield* storedExpiry).toBe(linkedAt + 50 * day);
+      expect(yield* expiryThere).toBe(linkedAt + 36_520 * day);
+      expect(yield* storedExpiry).toBe(linkedAt + 36_520 * day);
 
       yield* TestClock.adjust("20 days");
       expect(yield* call).toEqual({ modes: "" });
-      expect(yield* storedExpiry).toBe(linkedAt + 70 * day);
+      expect(yield* storedExpiry).toBe(linkedAt + 36_540 * day);
 
       // Idle for the whole window, the link expires on both sides.
-      yield* TestClock.adjust("30 days");
+      yield* TestClock.adjust("36501 days");
       expect((yield* call.pipe(Effect.flip)).code).toBe("capability_denied");
       expect((yield* links.list)[0]?.status).toBe("expired");
       expect(yield* b.linkedSessions).toEqual([]);

@@ -473,9 +473,9 @@ an address you trust: the code is sent there.
   it there when that machine confirms it. If it can't, such as when it is
   offline or on an older T3 Code, Forget says so; revoke it in that machine's
   Sharing & access.
-- A link stays valid while agents use it. One unused for 30 days expires, as
-  does one to a machine on an older T3 Code after 30 days; link again with a
-  new pairing code.
+- A link to a machine on this build never expires. One to a machine on the
+  official T3 Code expires after 30 days without use, and one to a machine on
+  an older T3 Code after 30 days; link again with a new pairing code.
 
 On web and desktop, **Settings → Environments** opens as a map of your machines:
 this app, each environment with one line per route (the one in use is

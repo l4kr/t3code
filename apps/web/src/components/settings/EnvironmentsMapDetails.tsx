@@ -312,12 +312,7 @@ function LinkButton({
           )}
         >
           <HealthGlyph health={edge.health} />
-          {attention
-            ? healthLabel(edge.health, gt)
-            : gt("Expires {date}", {
-                date: formatAccessTimestamp(DateTime.formatIso(edge.link.expiresAt)),
-                $context: "the date a link between two machines stops working",
-              })}
+          {healthLabel(edge.health, gt)}
         </span>
       </button>
     </li>
@@ -853,10 +848,6 @@ function LinkDetails({
           <HealthGlyph health={health} />
           {peerLinkStatusText(health, gt)}
         </dd>
-        <dt className={term}>
-          {gt("Expires", { $context: "label before the date a link expires" })}
-        </dt>
-        <dd className="text-foreground">{when(link.expiresAt)}</dd>
         <dt className={term}>{gt("Addresses")}</dt>
         <dd className="min-w-0 font-mono text-2xs break-all text-foreground">
           {link.urls.map((url) => (

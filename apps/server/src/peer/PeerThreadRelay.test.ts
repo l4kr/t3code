@@ -240,7 +240,7 @@ it.effect("tells a client why a linked environment's thread cannot be read", () 
       expect(yield* reasonOf()).toEqual({ reason: "rejected", label: "Box" });
 
       yield* Ref.set(b.bearers, []);
-      yield* TestClock.adjust(Duration.days(31));
+      yield* TestClock.adjust(Duration.days(36_501));
       expect(yield* reasonOf()).toEqual({ reason: "expired", label: "Box" });
       expect(yield* Ref.get(b.bearers)).toEqual([]);
     }),

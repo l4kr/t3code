@@ -704,7 +704,7 @@ it.effect("tells the agent to link again once the peer revokes the link or it ex
       });
       yield* probe(a);
 
-      yield* TestClock.adjust(Duration.days(31));
+      yield* TestClock.adjust(Duration.days(36_501));
       expect((yield* a.links.list).map((link) => link.status)).toEqual(["expired"]);
       expect(yield* a.links.names).toEqual([]);
       yield* Ref.set(b.bearers, []);

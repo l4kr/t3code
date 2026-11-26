@@ -86,6 +86,7 @@ export interface IssuedBearerSession {
 // MCP client tokens are restricted to /mcp; HTTP API and WebSocket RPC would bypass their access cap.
 const MCP_CLIENT_SUBJECT = "mcp-client";
 const MCP_CLIENT_SESSION_TTL = Duration.days(30);
+const PEER_LINK_SESSION_TTL = Duration.days(36_500);
 // A peer link's session moves back out to its full lifetime when a call finds it this far
 // short, so a used link never expires and a busy one writes at most once per step.
 const PEER_LINK_RENEWAL_STEP = Duration.days(1);
@@ -1642,7 +1643,7 @@ export const make = Effect.gen(function* () {
   ) {
     const now = yield* DateTime.now;
     const renewed = DateTime.add(now, {
-      milliseconds: Duration.toMillis(MCP_CLIENT_SESSION_TTL),
+      milliseconds: Duration.toMillis(PEER_LINK_SESSION_TTL),
     });
     if (DateTime.distance(expiresAt, renewed).pipe(Duration.isLessThan(PEER_LINK_RENEWAL_STEP))) {
       return DateTime.toUtc(expiresAt);
@@ -1714,7 +1715,7 @@ export const make = Effect.gen(function* () {
         subject: MCP_CLIENT_SUBJECT,
         method: "bearer-access-token",
         scopes: mcpClientScopes(input.access),
-        ttl: MCP_CLIENT_SESSION_TTL,
+        ttl: input.peerLink ? PEER_LINK_SESSION_TTL : MCP_CLIENT_SESSION_TTL,
         ...(input.access === "read-only" ? {} : { runtimeModeCeiling: input.access }),
         peerLink: input.peerLink,
         client: { ...input.client, label: input.label, deviceType: "bot" },
