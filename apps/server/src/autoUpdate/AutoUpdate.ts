@@ -152,6 +152,17 @@ export const workInProgress = Effect.gen(function* () {
       OR EXISTS (SELECT 1 FROM workflow_runs WHERE status = 'running')
       OR EXISTS (SELECT 1 FROM scheduled_tasks WHERE last_run_status = 'running')
       OR EXISTS (SELECT 1 FROM orchestration_v2_effect_outbox WHERE status = 'running')
+      OR EXISTS (
+        SELECT 1 FROM orchestration_v2_projection_subagents
+        WHERE status IN ('pending', 'running', 'waiting')
+          OR (status <> 'idle' AND completion_delivery_state IN ('pending', 'claimed'))
+      )
+      OR EXISTS (
+        SELECT 1 FROM orchestration_v2_projection_provider_threads
+        WHERE CASE WHEN json_valid(payload_json)
+          THEN json_array_length(payload_json, '$.pendingBackgroundTasks') > 0
+          ELSE 0 END
+      )
     ) AS busy
   `;
   return rows[0]?.busy === 1;

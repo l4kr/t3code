@@ -165,36 +165,38 @@ describe("AutoUpdate.userAway", () => {
 });
 
 it.layer(SqlitePersistence.layerMemory)("AutoUpdate.workInProgress", (it) => {
-  it.effect("is busy while a run, a workflow step or a scheduled task is still going", () =>
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const now = "2026-11-26T00:00:00.000Z";
-      expect(yield* AutoUpdate.workInProgress).toBe(false);
+  it.effect(
+    "is busy while a run, a workflow step, a scheduled task, a subagent or background work is still going",
+    () =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const now = "2026-11-26T00:00:00.000Z";
+        expect(yield* AutoUpdate.workInProgress).toBe(false);
 
-      const run = (runId: string, status: string) => sql`
+        const run = (runId: string, status: string) => sql`
         INSERT INTO orchestration_v2_projection_runs
           (run_id, thread_id, ordinal, provider, status, requested_at, payload_json)
         VALUES (${runId}, ${`thread-${runId}`}, 1, 'codex', ${status}, ${now}, '{}')
       `;
-      yield* run("done", "completed");
-      expect(yield* AutoUpdate.workInProgress).toBe(false);
-      for (const status of ["queued", "preparing", "starting", "running", "waiting"]) {
-        yield* run(status, status);
-        expect(yield* AutoUpdate.workInProgress).toBe(true);
-        yield* sql`UPDATE orchestration_v2_projection_runs SET status = 'completed' WHERE run_id = ${status}`;
+        yield* run("done", "completed");
         expect(yield* AutoUpdate.workInProgress).toBe(false);
-      }
+        for (const status of ["queued", "preparing", "starting", "running", "waiting"]) {
+          yield* run(status, status);
+          expect(yield* AutoUpdate.workInProgress).toBe(true);
+          yield* sql`UPDATE orchestration_v2_projection_runs SET status = 'completed' WHERE run_id = ${status}`;
+          expect(yield* AutoUpdate.workInProgress).toBe(false);
+        }
 
-      yield* sql`
+        yield* sql`
         INSERT INTO workflow_runs
           (run_id, workflow, version, engine_tag, idempotency_key, title, status, started_at, updated_at)
         VALUES ('wf', 'release', 1, 'engine', 'key', 'Release', 'running', ${now}, ${now})
       `;
-      expect(yield* AutoUpdate.workInProgress).toBe(true);
-      yield* sql`UPDATE workflow_runs SET status = 'completed' WHERE run_id = 'wf'`;
-      expect(yield* AutoUpdate.workInProgress).toBe(false);
+        expect(yield* AutoUpdate.workInProgress).toBe(true);
+        yield* sql`UPDATE workflow_runs SET status = 'completed' WHERE run_id = 'wf'`;
+        expect(yield* AutoUpdate.workInProgress).toBe(false);
 
-      yield* sql`
+        yield* sql`
         INSERT INTO scheduled_tasks
           (task_id, title, prompt, enabled, schedule_json, project_id, workspace_strategy_json,
            model_selection_json, runtime_mode, interaction_mode, created_by, creation_source,
@@ -202,9 +204,38 @@ it.layer(SqlitePersistence.layerMemory)("AutoUpdate.workInProgress", (it) => {
         VALUES ('task', 'Nightly', 'go', 1, '{}', 'project', '{}', '{}', 'full-access', 'default',
           'user', 'user', ${now}, ${now}, 'running', 0)
       `;
-      expect(yield* AutoUpdate.workInProgress).toBe(true);
-      yield* sql`UPDATE scheduled_tasks SET last_run_status = 'succeeded' WHERE task_id = 'task'`;
-      expect(yield* AutoUpdate.workInProgress).toBe(false);
-    }),
+        expect(yield* AutoUpdate.workInProgress).toBe(true);
+        yield* sql`UPDATE scheduled_tasks SET last_run_status = 'succeeded' WHERE task_id = 'task'`;
+        expect(yield* AutoUpdate.workInProgress).toBe(false);
+
+        const subagent = (status: string, delivery: string | null) => sql`
+        INSERT OR REPLACE INTO orchestration_v2_projection_subagents
+          (subagent_id, thread_id, parent_node_id, provider, origin, status, updated_at,
+           payload_json, completion_delivery_state)
+        VALUES ('sub', 'parent', 'node', 'claudeAgent', 'provider_native', ${status}, ${now},
+          '{}', ${delivery})
+      `;
+        for (const status of ["pending", "running", "waiting"]) {
+          yield* subagent(status, null);
+          expect(yield* AutoUpdate.workInProgress).toBe(true);
+        }
+        yield* subagent("completed", "pending");
+        expect(yield* AutoUpdate.workInProgress).toBe(true);
+        yield* subagent("completed", "delivered");
+        expect(yield* AutoUpdate.workInProgress).toBe(false);
+        yield* subagent("idle", null);
+        expect(yield* AutoUpdate.workInProgress).toBe(false);
+
+        const providerThread = (tasks: string) => sql`
+        INSERT OR REPLACE INTO orchestration_v2_projection_provider_threads
+          (provider_thread_id, thread_id, provider, status, updated_at, payload_json)
+        VALUES ('provider-thread', 'parent', 'claudeAgent', 'idle', ${now},
+          ${JSON.stringify({ pendingBackgroundTasks: JSON.parse(tasks) })})
+      `;
+        yield* providerThread('[{"taskId":"bg","kind":"command"}]');
+        expect(yield* AutoUpdate.workInProgress).toBe(true);
+        yield* providerThread("[]");
+        expect(yield* AutoUpdate.workInProgress).toBe(false);
+      }),
   );
 });

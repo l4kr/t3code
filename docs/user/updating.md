@@ -4,7 +4,7 @@ T3 Code clients and servers can run on different machines and must share a compa
 
 ## Automatic updates
 
-The desktop app and the background service install a new release on their own, without asking. They wait until nothing on that machine is working: no thread is running or waiting on you, no workflow step or scheduled task is in progress, and no terminal has a command running. The desktop app also waits until you have been away for five minutes or the screen is locked. Set `T3CODE_DISABLE_AUTO_UPDATE=1` to turn this off.
+The desktop app and the background service install a new release on their own, without asking. They wait until nothing on that machine is working: no thread is running or waiting on you, no subagent or agent background command is still going, no workflow step or scheduled task is in progress, and no terminal has a command running. The desktop app also waits until you have been away for five minutes or the screen is locked. Set `T3CODE_DISABLE_AUTO_UPDATE=1` to turn this off.
 
 ## Update everything at once
 
