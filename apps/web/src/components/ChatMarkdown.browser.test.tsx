@@ -393,7 +393,7 @@ describe("ChatMarkdown favicon privacy", () => {
     await using screen = await render(markdown("https://example.com"));
     const { container, rerender } = screen;
     expect([...container.querySelectorAll("img")].map((image) => image.src)).toEqual([
-      "https://www.google.com/s2/favicons?domain=example.com&sz=32",
+      "https://example.com/favicon.ico",
     ]);
     for (const url of ["http://192.168.1.10:8080", "http://localhost:3000", "http://home.arpa"]) {
       await rerender(markdown(url));

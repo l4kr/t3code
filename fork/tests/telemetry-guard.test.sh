@@ -70,4 +70,18 @@ rm -rf "$dir/apps/server/dist"
 check "a missing build fails instead of passing empty" 1 "No build output" "$dir"
 rm -rf "$dir"
 
+dir="$(fixture)"
+mkdir -p "$dir/apps/web/src/auth"
+printf '%s\n' '<ClerkProvider' '  publishableKey={key}' '  telemetry={false}' '>' > "$dir/apps/web/src/auth/Shell.tsx"
+check "a Clerk mount with its telemetry off passes" 0 "No telemetry" "$dir"
+echo '<ClerkProvider publishableKey={key} appearance={look}>' > "$dir/apps/web/src/auth/Other.tsx"
+check "a Clerk mount that keeps Clerk's telemetry fails" 1 "apps/web/src/auth/Other\.tsx.*ClerkProvider" "$dir"
+rm -rf "$dir"
+
+dir="$(fixture)"
+mkdir -p "$dir/apps/mobile/src"
+echo 'return <ClerkProvider publishableKey={key} tokenCache={cache}>{children}</ClerkProvider>;' > "$dir/apps/mobile/src/Auth.tsx"
+check "a mobile Clerk mount that keeps Clerk's telemetry fails" 1 "apps/mobile/src/Auth\.tsx" "$dir"
+rm -rf "$dir"
+
 [ "$failures" -eq 0 ]

@@ -17,7 +17,8 @@ T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `
 - **No telemetry**: product analytics (`ingest.t3.codes`), agent feedback reports, and T3 Connect
   relay traces (Axiom) are cut where they would leave the process: `AnalyticsService.layer` records
   nothing and `RelayTracing.layer` never exports, whatever the environment says. The server, the web
-  client, the desktop window and the mobile app all go through those two. Mobile crash reports never
+  client, the desktop window and the mobile app all go through those two. Clerk, which signs in to
+  T3 Connect, gets `telemetry={false}` at every `<ClerkProvider>`. Mobile crash reports never
   dispatch and its Diagnostics switches are hidden, though mobile only changes if you build it
   yourself; the store apps are upstream's. Your own OpenTelemetry export in
   _Settings > Maintenance > Diagnostics_ still works. Using T3 Connect still means talking to
@@ -40,7 +41,9 @@ T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `
 3. **Verify, no tokens.** `fork/verify.sh` typechecks every package the fork changes, runs the tests
    of fork-changed files and `fork/tests/`, builds the server and web client, and runs
    `fork/telemetry-guard.mjs`: it fails on a known telemetry SDK in any shipped package's
-   dependencies, or a telemetry endpoint, key or exporter in the built bundle. If verification
+   dependencies, a `<ClerkProvider>` without `telemetry={false}` (Clerk loads its reporting code from
+   its own servers, so no bundle scan sees it), or a telemetry endpoint, key or exporter in the
+   built bundle. If verification
    fails, Claude gets its output once and its fix is folded into the merge commit; if it still
    fails, nothing is pushed.
 

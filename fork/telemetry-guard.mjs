@@ -24,6 +24,8 @@ const DESTINATIONS = [
   /googletagmanager\.com/,
   /plausible\.io\b/,
   /clarity\.ms\b/,
+  /google\.com\/s2\/favicons/,
+  /icons\.duckduckgo\.com/,
 ];
 
 const SDKS =
@@ -40,6 +42,8 @@ const DEPENDENCY_FIELDS = [
   "peerDependencies",
 ];
 const BUNDLE = /\.(m?js|cjs|html|json)$/;
+const SOURCE = /(?<!\.test)\.(tsx?|jsx?)$/;
+const CLERK_MOUNT = /<ClerkProvider\b(?:[^>{]|\{[^}]*\})*>/g;
 
 const args = process.argv.slice(2);
 const option = (name) =>
@@ -47,7 +51,7 @@ const option = (name) =>
 const root = NodePath.resolve(option("root")[0] ?? ".");
 const dists = option("dist").map((dir) => NodePath.resolve(root, dir));
 
-const findings = [...scanDependencies(), ...dists.flatMap(scanBundle)];
+const findings = [...scanDependencies(), ...scanSources(), ...dists.flatMap(scanBundle)];
 if (findings.length > 0) {
   console.error(`Telemetry found (${findings.length}):`);
   for (const finding of findings) console.error(`  ${finding}`);
@@ -57,7 +61,7 @@ if (findings.length > 0) {
   process.exit(1);
 }
 console.log(
-  `No telemetry in workspace dependencies${dists.length ? ` or ${dists.map((dir) => NodePath.relative(root, dir)).join(", ")}` : ""}.`,
+  `No telemetry in workspace dependencies, Clerk mounts${dists.length ? ` or ${dists.map((dir) => NodePath.relative(root, dir)).join(", ")}` : ""}.`,
 );
 
 function scanDependencies() {
@@ -84,6 +88,32 @@ function scanDependencies() {
   });
 }
 
+function shippedPackages() {
+  return ["apps", "packages"].flatMap((group) => {
+    const dir = NodePath.join(root, group);
+    if (!NodeFS.existsSync(dir)) return [];
+    return NodeFS.readdirSync(dir)
+      .map((name) => `${group}/${name}`)
+      .filter((pkg) => !UNSHIPPED.has(pkg) && NodeFS.existsSync(NodePath.join(root, pkg, "src")));
+  });
+}
+
+function scanSources() {
+  return shippedPackages().flatMap((pkg) =>
+    walk(NodePath.join(root, pkg, "src"))
+      .filter((file) => SOURCE.test(file))
+      .flatMap((file) => {
+        const text = NodeFS.readFileSync(file, "utf8");
+        return [...text.matchAll(CLERK_MOUNT)]
+          .filter(([tag]) => !/\btelemetry=\{false\}/.test(tag))
+          .map(
+            ([tag]) =>
+              `${NodePath.relative(root, file)}: ${tag.replace(/\s+/g, " ")} keeps Clerk's own telemetry; pass telemetry={false}`,
+          );
+      }),
+  );
+}
+
 function scanBundle(dir) {
   if (!NodeFS.existsSync(dir)) return [`No build output at ${NodePath.relative(root, dir)}`];
   return walk(dir)
@@ -102,6 +132,7 @@ function scanBundle(dir) {
 
 function walk(dir) {
   return NodeFS.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.name === "node_modules") return [];
     const path = NodePath.join(dir, entry.name);
     return entry.isDirectory() ? walk(path) : [path];
   });
