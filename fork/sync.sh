@@ -114,7 +114,8 @@ merge() {
 }
 
 verify() {
-  local cmd="${FORK_VERIFY:-bash $here/verify.sh $target}"
+  git fetch -q --no-tags "$url" +refs/heads/main:refs/remotes/upstream/main
+  local cmd="${FORK_VERIFY:-bash $here/verify.sh}"
   if bash -c "$cmd" > "$tmp/verify.log" 2>&1; then
     tail -n 20 "$tmp/verify.log"
     return 0

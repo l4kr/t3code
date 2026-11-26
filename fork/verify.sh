@@ -2,7 +2,7 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
-base="${1:-upstream/target}"
+base="${1:-$(git merge-base HEAD upstream/main)}"
 
 mapfile -t changed < <(git diff --name-only "$base" HEAD -- . \
   ':(exclude).github' ':(exclude)fork' ':(exclude)FORK.md')
@@ -26,6 +26,11 @@ mapfile -t tests < <(
     esac
   done | sort -u
 )
+if printf '%s\n' "${tests[@]}" | grep -q '\.browser\.test\.'; then
+  echo "== browser for browser tests"
+  node apps/web/node_modules/playwright/cli.js install --only-shell chromium
+  if [ -n "${CI:-}" ]; then node apps/web/node_modules/playwright/cli.js install-deps chromium; fi
+fi
 if [ "${#tests[@]}" -gt 0 ]; then
   echo "== tests of fork changes"
   vp test run "${tests[@]}"
