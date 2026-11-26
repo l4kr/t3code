@@ -37,6 +37,8 @@ Intro.
 
 ## How this fork differs from T3 Code
 
+This is a fork.
+
 - **No telemetry.**
 - **Environment links don't expire.**
 

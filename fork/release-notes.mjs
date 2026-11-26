@@ -34,7 +34,9 @@ export function forkDifferences(readme) {
   if (start === -1) return "";
   const rest = lines.slice(start + 1);
   const end = rest.findIndex((line) => line.startsWith("## "));
-  return (end === -1 ? rest : rest.slice(0, end)).join("\n").trim();
+  const section = end === -1 ? rest : rest.slice(0, end);
+  const list = section.findIndex((line) => line.startsWith("- "));
+  return list === -1 ? "" : section.slice(list).join("\n").trim();
 }
 
 export function releaseNotes({
