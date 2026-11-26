@@ -26,13 +26,13 @@ describe("web runtime relay telemetry policy", () => {
     {
       surface: "desktop enabled",
       desktopBridge: { getRelayTelemetryEnabled: () => true },
-      exports: true,
+      exports: false,
     },
     {
       // The desktop host reads the login shell after the renderer has started.
       surface: "desktop enabled once the login shell is read",
       desktopBridge: { getRelayTelemetryEnabled: answers(null, true) },
-      exports: true,
+      exports: false,
     },
     {
       surface: "desktop opt-out found in the login shell",
@@ -54,14 +54,14 @@ describe("web runtime relay telemetry policy", () => {
       surface: "browser whose server allows it",
       desktopBridge: undefined,
       server: true,
-      exports: true,
+      exports: false,
     },
     {
       // The hosted app is served by no T3 server, so nothing can answer for it.
       surface: "hosted app",
       desktopBridge: undefined,
       location: new URL("https://app.example.test/"),
-      exports: true,
+      exports: false,
     },
   ])("applies $surface before the first relay span", async (surface) => {
     const { desktopBridge, exports } = surface;

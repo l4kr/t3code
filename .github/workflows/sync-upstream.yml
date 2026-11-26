@@ -16,9 +16,11 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
     env:
       UPSTREAM: pingdotgg/t3code
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,63 +28,28 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.FORK_SYNC_TOKEN || github.token }}
 
+      - name: Setup Vite+
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install: "false"
+
       - name: Merge upstream main
         id: merge
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch --no-tags "https://github.com/$UPSTREAM.git" +refs/heads/main:refs/remotes/upstream/main
-          if git merge-base --is-ancestor upstream/main HEAD; then
-            echo "Already up to date with $UPSTREAM."
-            exit 0
-          fi
-          git ls-files .github/workflows | sort -u > "$RUNNER_TEMP/fork-workflows"
-          git merge --no-ff --no-commit upstream/main || true
-          git diff --name-only --diff-filter=U -- fork/upstream-workflows | while read -r file; do
-            if git cat-file -e ":3:$file" 2>/dev/null; then
-              git checkout --theirs -- "$file" && git add -- "$file"
-            else
-              git rm -q -f -- "$file"
-            fi
-          done
-          git ls-files .github/workflows | sort -u | comm -23 - "$RUNNER_TEMP/fork-workflows" | while read -r file; do
-            target="fork/upstream-workflows/$(basename "$file")"
-            for stage in 0 3; do
-              if git cat-file -e ":$stage:$file" 2>/dev/null; then git show ":$stage:$file" > "$target"; break; fi
-            done
-            git rm -q -f -- "$file"
-            if [ -f "$target" ]; then git add -- "$target"; fi
-          done
-          both_added="$(bash fork/resolve-additive-conflicts.sh)"
-          conflicts="$(git diff --name-only --diff-filter=U)"
-          if [ -n "$conflicts" ]; then
-            git merge --abort
-            {
-              echo "### Upstream merge needs a hand"
-              echo
-              echo "These files conflict with fork changes. Merge \`$UPSTREAM\` main locally and push:"
-              echo
-              echo "$conflicts" | sed 's/^/- `/; s/$/`/'
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::Upstream merge conflicts in: $(echo $conflicts)"
-            exit 1
-          fi
-          message="Merge $UPSTREAM main ($(git rev-parse --short upstream/main))"
-          if [ -n "$both_added" ]; then
-            body="$(printf 'Kept both sides where each only added lines:\n%s' "$(echo "$both_added" | sed 's/^/- /')")"
-            git commit -q --no-edit -m "$message" -m "$body"
-            {
-              echo "### Kept both sides of additive conflicts"
-              echo
-              echo "$both_added" | sed 's/^/- `/; s/$/`/'
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            git commit -q --no-edit -m "$message"
-          fi
-          echo "pushed=true" >> "$GITHUB_OUTPUT"
+          bash fork/sync.sh merge
+
+      - name: Setup dependencies
+        if: steps.merge.outputs.merged == 'true'
+        uses: ./.github/actions/setup-ci-deps
+
+      - name: Verify fork changes and telemetry
+        if: steps.merge.outputs.merged == 'true'
+        run: bash fork/sync.sh verify
 
       - name: Push
-        if: steps.merge.outputs.pushed == 'true'
+        if: steps.merge.outputs.merged == 'true'
         run: |
           if ! git push origin HEAD:main; then
             echo "::error::Push refused. Upstream commits that touch workflows need a FORK_SYNC_TOKEN secret: a fine-grained token for this repository with Contents and Workflows read/write."

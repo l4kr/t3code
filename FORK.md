@@ -14,17 +14,45 @@ T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `
 - **Branch cleanup**: when storage cleanup removes a settled thread's worktree, it also deletes the
   thread's branch if every commit is on the default branch or its pull request merged.
 - Windows only: Chromium smooth scrolling turned off.
+- **No telemetry**: product analytics (`ingest.t3.codes`), agent feedback reports, and T3 Connect
+  relay traces (Axiom) are cut where they would leave the process: `AnalyticsService.layer` records
+  nothing and `RelayTracing.layer` never exports, whatever the environment says. The server, the web
+  client, the desktop window and the mobile app all go through those two. Mobile crash reports never
+  dispatch and its Diagnostics switches are hidden, though mobile only changes if you build it
+  yourself; the store apps are upstream's. Your own OpenTelemetry export in
+  _Settings > Maintenance > Diagnostics_ still works. Using T3 Connect still means talking to
+  upstream's relay, which keeps its own server-side logs.
 
 ## Source sync
 
-`.github/workflows/sync-upstream.yml` merges upstream `main` into `main` hourly.
+`.github/workflows/sync-upstream.yml` merges upstream `main` into `main` hourly with
+`fork/sync.sh`. Each step only runs if the one before could not finish:
 
-- Upstream's workflows are parked, unchanged, in `fork/upstream-workflows/` so they never run here.
-  Git's rename detection carries upstream's edits into them; new ones are moved there on merge.
-- A conflict where both sides only added lines at the same spot keeps both
-  (`fork/resolve-additive-conflicts.sh`); the merge commit and run summary list those files.
-- Any other conflict stops the run and lists the files in the run summary. Merge locally then.
+1. **Rules, no tokens.** Upstream's workflows are parked, unchanged, in `fork/upstream-workflows/`
+   so they never run here; git's rename detection carries upstream's edits into them and new ones
+   are moved there. In the files listed in `fork/fork-owned.txt` (the telemetry cuts and their
+   tests), the fork's side of each conflicting hunk wins and upstream's other hunks stay. A conflict
+   where both sides only added lines at the same spot keeps both
+   (`fork/resolve-additive-conflicts.sh`).
+2. **Claude**, for conflicts the rules leave. It gets `fork/claude-merge.md` and this file, edits the
+   working tree, and stages; the script refuses its result if anything is unmerged or still has
+   conflict markers, and then nothing is pushed.
+3. **Verify, no tokens.** `fork/verify.sh` typechecks every package the fork changes, runs the tests
+   of fork-changed files and `fork/tests/`, builds the server and web client, and runs
+   `fork/telemetry-guard.mjs`: it fails on a known telemetry SDK in any shipped package's
+   dependencies, or a telemetry endpoint, key or exporter in the built bundle. If verification
+   fails, Claude gets its output once and its fix is folded into the merge commit; if it still
+   fails, nothing is pushed.
+
+The merge commit body and run summary list each file each step settled. Without Claude credentials
+the run stops where Claude would start, and the summary lists the files to merge by hand.
+
+- Claude uses the `CLAUDE_CODE_OAUTH_TOKEN` secret (`claude setup-token`, uses a Claude
+  subscription) or `ANTHROPIC_API_KEY`, with Opus at high effort and Claude Code's own telemetry
+  off. `FORK_CLAUDE_MODEL` and `FORK_CLAUDE_EFFORT` override them.
+- When a new fork change replaces a file outright, add it to `fork/fork-owned.txt`.
 - Pushes use the `FORK_SYNC_TOKEN` secret, a token with Contents and Workflows write access.
+- `bash fork/tests/sync.test.sh` and `bash fork/tests/telemetry-guard.test.sh` test the scripts.
 
 ## Releases
 
@@ -33,7 +61,9 @@ T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `
 1. **build** (Linux): checks out the upstream tag, applies this fork's changes (`main` minus
    upstream, excluding `.github/`, `fork/` and this file), and builds the server and web client with
    the T3 Connect config read from upstream's own build (`fork/upstream-client-env.mjs`; telemetry
-   tokens are left out).
+   tokens are left out). If the changes still conflict with the tag after unwinding later upstream
+   syncs, the same rules and then Claude resolve them, and the result is typechecked. The telemetry
+   guard must pass on the built bundle or nothing is released.
 2. **windows**: repacks upstream's installer (`fork/repack-windows.mjs`) with that server, smooth
    scrolling off and the updater pointed at this repo.
 3. **macos** (arm64 and x64): repacks upstream's app (`fork/repack-macos.mjs`) with that server,

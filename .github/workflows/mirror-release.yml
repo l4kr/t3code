@@ -75,8 +75,13 @@ jobs:
           fetch-depth: 0
 
       - name: Check out the release with fork changes
+        id: apply
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           cp -r fork "$RUNNER_TEMP/fork-tools"
+          cp FORK.md "$RUNNER_TEMP/fork-tools/"
           git fetch --no-tags "https://github.com/$UPSTREAM.git" \
             +refs/heads/main:refs/remotes/upstream/main "+refs/tags/$TAG:refs/tags/$TAG"
           excludes=(
@@ -112,8 +117,36 @@ jobs:
               && git diff --quiet "$ref^1" "$ref" -- . "${excludes[@]}"; then
               ref="$(git rev-parse "$ref^1")"
             else
-              echo "::error::Fork changes at $(git rev-parse --short "$ref") do not apply cleanly onto $TAG"
-              exit 1
+              if [ -z "$(git diff --name-only --diff-filter=U)" ]; then
+                echo "::error::Fork changes at $(git rev-parse --short "$ref") do not apply onto $TAG"
+                exit 1
+              fi
+              tools="$RUNNER_TEMP/fork-tools"
+              FORK_SIDE=theirs bash "$tools/resolve-fork-owned.sh"
+              bash "$tools/resolve-additive-conflicts.sh"
+              conflicts="$(git diff --name-only --diff-filter=U)"
+              if [ -n "$conflicts" ]; then
+                {
+                  echo "Resolve the conflicts left by \`git apply --3way\` of the fork's changes onto upstream release $TAG. Ours is the release, theirs is the fork. Nothing is committed here."
+                  echo
+                  echo "$conflicts" | sed 's/^/- /'
+                } > "$RUNNER_TEMP/task"
+                bash "$tools/claude.sh" "$RUNNER_TEMP/task"
+                left="$(git diff --name-only --diff-filter=U)"
+                marked="$(echo "$conflicts" | while read -r f; do [ -f "$f" ] && grep -lE '^(<{7}|>{7})( |$)' -- "$f"; done || true)"
+                if [ -n "$left$marked" ]; then
+                  echo "::error::Fork changes at $(git rev-parse --short "$ref") still conflict with $TAG in: $(echo $left $marked)"
+                  exit 1
+                fi
+                echo "claude=true" >> "$GITHUB_OUTPUT"
+                {
+                  echo "### Claude resolved the fork changes onto $TAG"
+                  echo
+                  echo "$conflicts" | sed 's/^/- `/; s/$/`/'
+                } >> "$GITHUB_STEP_SUMMARY"
+              fi
+              echo "Applied fork changes from $(git rev-parse --short "$ref") onto $TAG with conflicts resolved"
+              break
             fi
           done
 
@@ -130,8 +163,17 @@ jobs:
         with:
           install-args: --filter=t3... --filter=@t3tools/web... --filter=@t3tools/scripts...
 
+      - name: Typecheck Claude's resolution
+        if: steps.apply.outputs.claude == 'true'
+        run: |
+          (cd apps/server && vp run typecheck)
+          (cd apps/web && vp run typecheck)
+
       - name: Build server and web client
         run: vp run --filter t3 build
+
+      - name: Refuse to ship telemetry
+        run: node "$RUNNER_TEMP/fork-tools/telemetry-guard.mjs" --dist apps/server/dist
 
       - uses: actions/upload-artifact@v4
         with:

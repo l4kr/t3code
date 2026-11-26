@@ -95,9 +95,8 @@ describe("nonInterferingTracer", () => {
   );
 });
 
-it.effect.each([true, false])("filters relay exports at flush (%s)", (enabledAtFlush) => {
+it.effect("never exports relay spans, even when configured and enabled", () => {
   const fetchFn = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
-  let enabled = true;
   return Effect.logWarning("private error detail").pipe(
     Effect.withSpan("relay.request", {
       attributes: {
@@ -109,13 +108,12 @@ it.effect.each([true, false])("filters relay exports at flush (%s)", (enabledAtF
       },
     }),
     withRelayClientTracing,
-    Effect.andThen(Effect.sync(() => (enabled = enabledAtFlush))),
     Layer.effectDiscard,
     Layer.provide(
       layer(
         { tracesUrl: "https://traces.example.com", tracesDataset: "relay", tracesToken: "token" },
         { serviceName: "t3code-test", runtime: "node", serviceInstanceId: "id", client: "test" },
-        { isEnabled: () => enabled },
+        { isEnabled: () => true },
       ),
     ),
     Layer.provide(FetchHttpClient.layer),
@@ -129,13 +127,7 @@ it.effect.each([true, false])("filters relay exports at flush (%s)", (enabledAtF
     Effect.scoped,
     Effect.andThen(
       Effect.sync(() => {
-        expect(fetchFn).toHaveBeenCalledTimes(Number(enabledAtFlush));
-        if (!enabledAtFlush) return;
-        const sent = new TextDecoder().decode(fetchFn.mock.calls[0]?.[1]?.body as Uint8Array);
-        expect(sent).toContain("/api/threads");
-        expect(sent).not.toMatch(
-          /studio-mac|cursor=secret|server\.port|private error detail|private-host/,
-        );
+        expect(fetchFn).not.toHaveBeenCalled();
       }),
     ),
   );
