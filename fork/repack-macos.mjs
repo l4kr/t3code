@@ -32,6 +32,7 @@ const notary = ["APPLE_ID", "APPLE_APP_PASSWORD", "APPLE_TEAM_ID"].map((name) =>
 });
 
 const version = tag.replace(/^v/, "");
+const appVersion = args["app-version"] ?? version;
 NodeFS.rmSync(workDir, { recursive: true, force: true });
 NodeFS.mkdirSync(NodePath.join(workDir, "entitlements"), { recursive: true });
 NodeFS.mkdirSync(outDir, { recursive: true });
@@ -57,6 +58,7 @@ const asarPath = NodePath.join(resources, "app.asar");
 const asar = readAsar(asarPath);
 const packageJson = JSON.parse(readAsarFile(asar, "package.json").toString("utf8"));
 delete packageJson.t3codeWebAuthn;
+packageJson.version = appVersion;
 replaceAsarFile(asar, "package.json", Buffer.from(JSON.stringify(packageJson, null, 2), "utf8"));
 swapServerDist(asar, serverDistSource, NodePath.join(workDir, "server-dist"));
 swapDesktopDist(asar, desktopDistSource, NodePath.join(workDir, "desktop-dist"));
@@ -129,7 +131,7 @@ run("spctl", ["--assess", "--type", "execute", "--verbose=2", appPath]);
 
 assertServerDist(readAsar(asarPath), serverDistSource);
 assertDesktopDist(readAsar(asarPath), desktopDistSource);
-const outZip = NodePath.join(outDir, `T3-Code-${version}-${arch}.zip`);
+const outZip = NodePath.join(outDir, `T3-Code-${appVersion}-${arch}.zip`);
 run("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", appPath, outZip]);
 console.log(`OK: ${outZip}`);
 

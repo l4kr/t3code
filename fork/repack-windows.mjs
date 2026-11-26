@@ -50,6 +50,12 @@ const asar = readAsar(asarPath);
 const appPackage = JSON.parse(readAsarFile(asar, "package.json").toString("utf8"));
 const version = appPackage.version;
 if (`v${version}` !== tag) throw new Error(`Installer is ${version}, expected ${tag}`);
+const appVersion = args["app-version"] ?? version;
+replaceAsarFile(
+  asar,
+  "package.json",
+  Buffer.from(JSON.stringify({ ...appPackage, version: appVersion }, null, 2), "utf8"),
+);
 
 if (desktopDistSource) {
   swapDesktopDist(asar, desktopDistSource, NodePath.join(workDir, "desktop-dist"));
@@ -108,7 +114,7 @@ NodeFS.writeFileSync(
   JSON.stringify(
     {
       name: appPackage.name,
-      version,
+      version: appVersion,
       productName,
       description: appPackage.description,
       author: appPackage.author,
@@ -187,7 +193,7 @@ run(
   { cwd: projectDir },
 );
 
-const builtInstaller = NodePath.join(outDir, `T3-Code-${version}-x64.exe`);
+const builtInstaller = NodePath.join(outDir, `T3-Code-${appVersion}-x64.exe`);
 const verifyDir = NodePath.join(workDir, "verify");
 NodeFS.rmSync(verifyDir, { recursive: true, force: true });
 run(sevenZip, ["x", "-y", `-o${verifyDir}`, builtInstaller, "$PLUGINSDIR/app-64.7z"]);
@@ -203,6 +209,9 @@ run(sevenZip, [
 const builtApp = readAsar(NodePath.join(verifyDir, "resources", "app.asar"));
 const builtEntry = readAsarFile(builtApp, appPackage.main).toString("utf8");
 if (desktopDistSource) assertDesktopDist(builtApp, desktopDistSource);
+const builtVersion = JSON.parse(readAsarFile(builtApp, "package.json").toString("utf8")).version;
+if (builtVersion !== appVersion)
+  throw new Error(`Built installer is version ${builtVersion}, expected ${appVersion}`);
 const builtFeed = NodeFS.readFileSync(
   NodePath.join(verifyDir, "resources", "app-update.yml"),
   "utf8",
@@ -218,8 +227,8 @@ if (serverDistSource) {
   );
 }
 for (const name of [
-  `T3-Code-${version}-x64.exe`,
-  `T3-Code-${version}-x64.exe.blockmap`,
+  `T3-Code-${appVersion}-x64.exe`,
+  `T3-Code-${appVersion}-x64.exe.blockmap`,
   "latest.yml",
 ]) {
   if (!NodeFS.existsSync(NodePath.join(outDir, name))) throw new Error(`Missing output ${name}`);

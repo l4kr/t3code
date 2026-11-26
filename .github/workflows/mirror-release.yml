@@ -5,13 +5,7 @@ on:
     - cron: "41 * * * *"
   push:
     branches: [main]
-    paths: [fork/**, .github/workflows/mirror-release.yml]
   workflow_dispatch:
-    inputs:
-      replace:
-        description: Release the latest upstream version again, replacing this fork's release of it
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -30,31 +24,24 @@ jobs:
     timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
     outputs:
+      upstream_tag: ${{ steps.pick.outputs.upstream_tag }}
+      upstream_version: ${{ steps.pick.outputs.upstream_version }}
       tag: ${{ steps.pick.outputs.tag }}
       version: ${{ steps.pick.outputs.version }}
       skip: ${{ steps.pick.outputs.skip }}
-      replace: ${{ steps.pick.outputs.replace }}
     steps:
       - name: Keep schedule alive
         run: gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/mirror-release.yml/enable" || true
 
-      - name: Pick release
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: fork
+
+      - name: Pick the next fork release
         id: pick
-        env:
-          REPLACE: ${{ inputs.replace }}
-        run: |
-          tag="$(gh api "repos/$UPSTREAM/releases/latest" --jq .tag_name)"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            if [ "$REPLACE" = "true" ]; then
-              echo "replace=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "$tag is already released."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-            fi
-          fi
+        run: node fork/release-version.mjs
 
   build:
     needs: pick
@@ -65,7 +52,9 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.pick.outputs.tag }}
       VERSION: ${{ needs.pick.outputs.version }}
-      UPSTREAM_REF: refs/tags/${{ needs.pick.outputs.tag }}
+      UPSTREAM_TAG: ${{ needs.pick.outputs.upstream_tag }}
+      UPSTREAM_VERSION: ${{ needs.pick.outputs.upstream_version }}
+      UPSTREAM_REF: refs/tags/${{ needs.pick.outputs.upstream_tag }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
@@ -92,13 +81,21 @@ jobs:
 
       - name: Read upstream build config
         run: |
-          gh release download "$TAG" --repo "$UPSTREAM" --pattern "T3-Code-$VERSION-arm64.zip" --dir "$RUNNER_TEMP/upstream"
-          zip="$RUNNER_TEMP/upstream/T3-Code-$VERSION-arm64.zip"
+          gh release download "$UPSTREAM_TAG" --repo "$UPSTREAM" --pattern "T3-Code-$UPSTREAM_VERSION-arm64.zip" --dir "$RUNNER_TEMP/upstream"
+          zip="$RUNNER_TEMP/upstream/T3-Code-$UPSTREAM_VERSION-arm64.zip"
           entry="$(unzip -Z1 "$zip" | grep -m1 'Contents/Resources/app\.asar$')"
           unzip -p "$zip" "$entry" > "$RUNNER_TEMP/app.asar"
           node fork/upstream-client-env.mjs --asar "$RUNNER_TEMP/app.asar" --work "$RUNNER_TEMP" > "$RUNNER_TEMP/client.env"
           cat "$RUNNER_TEMP/client.env" >> "$GITHUB_ENV"
           grep '^VITE_CLERK_PUBLISHABLE_KEY=' "$RUNNER_TEMP/client.env" | sed 's/^VITE_/T3CODE_/' >> "$GITHUB_ENV"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Stamp the fork version
+        run: |
+          for pkg in apps/server apps/web apps/desktop; do
+            node -e 'const fs=require("fs");const f=process.argv[1];const p=JSON.parse(fs.readFileSync(f,"utf8"));p.version=process.argv[2];fs.writeFileSync(f,JSON.stringify(p,null,2)+"\n")' "$pkg/package.json" "$VERSION"
+            git update-index --skip-worktree "$pkg/package.json"
+          done
 
       - name: Setup dependencies
         uses: ./.github/actions/setup-ci-deps
@@ -188,6 +185,7 @@ jobs:
 
       - name: Build CLI archive
         run: |
+          node -e 'const fs=require("fs");const f="apps/server/package.json";const p=JSON.parse(fs.readFileSync(f,"utf8"));p.version=process.env.VERSION;fs.writeFileSync(f,JSON.stringify(p,null,2)+"\n")'
           node apps/server/scripts/cli.ts build-exe --verbose
           node scripts/build-cli-archive.ts --platform "${{ matrix.platform }}" --arch "${{ matrix.arch }}" \
             --version "$VERSION" --resource-monitor-dir "$RUNNER_TEMP/resource-monitor" --output-dir release-cli
@@ -214,6 +212,8 @@ jobs:
       SEVEN_ZIP: C:/Program Files/7-Zip/7z.exe
       TAG: ${{ needs.pick.outputs.tag }}
       VERSION: ${{ needs.pick.outputs.version }}
+      UPSTREAM_TAG: ${{ needs.pick.outputs.upstream_tag }}
+      UPSTREAM_VERSION: ${{ needs.pick.outputs.upstream_version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -231,8 +231,8 @@ jobs:
 
       - name: Download upstream installer
         run: >
-          gh release download "$TAG" --repo "$UPSTREAM"
-          --pattern "T3-Code-$VERSION-x64.exe" --dir "$RUNNER_TEMP/upstream"
+          gh release download "$UPSTREAM_TAG" --repo "$UPSTREAM"
+          --pattern "T3-Code-$UPSTREAM_VERSION-x64.exe" --dir "$RUNNER_TEMP/upstream"
 
       - uses: actions/setup-node@v4
         with:
@@ -241,8 +241,9 @@ jobs:
       - name: Repack
         run: >
           node fork/repack-windows.mjs
-          --installer "$RUNNER_TEMP/upstream/T3-Code-$VERSION-x64.exe"
-          --tag "$TAG"
+          --installer "$RUNNER_TEMP/upstream/T3-Code-$UPSTREAM_VERSION-x64.exe"
+          --tag "$UPSTREAM_TAG"
+          --app-version "$VERSION"
           --repo "$GITHUB_REPOSITORY"
           --server-dist "$RUNNER_TEMP/server-dist"
           --desktop-dist "$RUNNER_TEMP/desktop-dist"
@@ -272,6 +273,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.pick.outputs.tag }}
       VERSION: ${{ needs.pick.outputs.version }}
+      UPSTREAM_TAG: ${{ needs.pick.outputs.upstream_tag }}
+      UPSTREAM_VERSION: ${{ needs.pick.outputs.upstream_version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -289,8 +292,8 @@ jobs:
 
       - name: Download upstream app
         run: >
-          gh release download "$TAG" --repo "$UPSTREAM"
-          --pattern "T3-Code-$VERSION-${{ matrix.arch }}.zip" --dir "$RUNNER_TEMP/upstream"
+          gh release download "$UPSTREAM_TAG" --repo "$UPSTREAM"
+          --pattern "T3-Code-$UPSTREAM_VERSION-${{ matrix.arch }}.zip" --dir "$RUNNER_TEMP/upstream"
 
       - uses: actions/setup-node@v4
         with:
@@ -326,9 +329,10 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: >
           node fork/repack-macos.mjs
-          --zip "$RUNNER_TEMP/upstream/T3-Code-$VERSION-${{ matrix.arch }}.zip"
+          --zip "$RUNNER_TEMP/upstream/T3-Code-$UPSTREAM_VERSION-${{ matrix.arch }}.zip"
           --arch "${{ matrix.arch }}"
-          --tag "$TAG"
+          --tag "$UPSTREAM_TAG"
+          --app-version "$VERSION"
           --repo "$GITHUB_REPOSITORY"
           --server-dist "$RUNNER_TEMP/server-dist"
           --desktop-dist "$RUNNER_TEMP/desktop-dist"
@@ -357,6 +361,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.pick.outputs.tag }}
       VERSION: ${{ needs.pick.outputs.version }}
+      UPSTREAM_TAG: ${{ needs.pick.outputs.upstream_tag }}
+      UPSTREAM_VERSION: ${{ needs.pick.outputs.upstream_version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -380,10 +386,8 @@ jobs:
       - name: Publish
         run: |
           ls -la release
-          if [ "${{ needs.pick.outputs.replace }}" = "true" ]; then
-            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
-          fi
-          gh release view "$TAG" --repo "$UPSTREAM" --json name --jq .name > title.txt
-          gh release view "$TAG" --repo "$UPSTREAM" --json body --jq .body > notes.md
+          title="$(gh release view "$UPSTREAM_TAG" --repo "$UPSTREAM" --json name --jq .name)"
+          printf '%s · l4kr.%s' "$title" "${VERSION##*-l4kr.}" > title.txt
+          gh release view "$UPSTREAM_TAG" --repo "$UPSTREAM" --json body --jq .body > notes.md
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "${{ needs.build.outputs.sha }}" --latest \
             --title "$(cat title.txt)" --notes-file notes.md release/*

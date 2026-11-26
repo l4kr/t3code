@@ -32,9 +32,12 @@ T3 Code for Windows x64 and macOS (Apple Silicon and Intel), tracking upstream `
 
 ## Releases
 
-Everything runs on GitHub. `.github/workflows/mirror-release.yml` checks hourly for a new stable
-upstream version and, when there is one, merges it, verifies it and publishes it; installed apps
-update themselves from this repo's releases. Each step runs only if the one before could not finish:
+Everything runs on GitHub. `.github/workflows/mirror-release.yml` runs hourly and on every push to
+`main`. It releases when upstream has a new stable version, or when `main` changed since the last
+release, as `<upstream version>-l4kr.<n>` (`fork/release-version.mjs`): `v0.1.12-l4kr.1`,
+`v0.1.12-l4kr.2` for a fork change, `v0.1.13-l4kr.1` for the next upstream version. Installed apps
+and `t3 update` take each one, since T3 reads the suffix as the stable channel; macOS keeps
+upstream's numeric bundle version. Each step runs only if the one before could not finish:
 
 1. **Rules, no tokens.** `fork/sync.sh merge` merges the upstream version's tag into `main`.
    Upstream's workflows are parked, unchanged, in `fork/upstream-workflows/` so they never run here;
@@ -80,8 +83,6 @@ and the last release as they were, and GitHub emails the failure.
   where Claude would start, and the summary lists the files to merge by hand.
 - When a new fork change replaces a file outright, add it to `fork/fork-owned.txt`.
 - Pushes use the `FORK_SYNC_TOKEN` secret, a token with Contents and Workflows write access.
-- Fork changes pushed to `main` ship with the next upstream version. To ship them now, run
-  _Release_ with _replace_ checked; an installed app on that version needs a manual reinstall.
 - Each run re-enables the workflow, since GitHub switches off schedules on quiet repositories.
 - Windows builds are unsigned, so `app-update.yml` has no `publisherName`. Only the first manual
   install shows a SmartScreen prompt.
